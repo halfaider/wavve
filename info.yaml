@@ -1,13 +1,13 @@
 title: "웨이브"
-version: "1.0.4"
+version: "1.0.5"
 package_name: "wavve"
 developer: "soju6jan"
 description: "웨이브 VOD 다운로더"
-home: "https://github.com/soju6jan/wavve"
-more: "https://raw.githubusercontent.com/soju6jan/wavve/main/README.md"
+home: "https://github.com/halfaider/wavve"
 
 require_plugin:
   - "https://github.com/soju6jan/sjva"
   - "https://github.com/flaskfarm/support_site"
   - "https://github.com/flaskfarm/ffmpeg"
+  - "https://github.com/soju6jan/wv_tool"
 
