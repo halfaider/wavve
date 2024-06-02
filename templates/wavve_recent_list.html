@@ -19,6 +19,7 @@
           <option value="etc_abort_11">패스 - QVOD</option>
           <option value="etc_abort_12">패스 - 제외 채널</option>
           <option value="etc_abort_13">패스 - 제외 프로그램</option>
+          <option value="etc_abort_17">패스 - 제외 장르</option>
           <option value="etc_abort_14">화이트리스트 제외</option>
           <option value="etc_abort_15">에피소드 제외</option>
         </select>
@@ -94,6 +95,11 @@ $("body").on('click', '#except_program_btn', function(e){
   add_condition('recent_except_program', $(this).data('program'))
 });
 
+$("body").on('click', '#except_genres_btn', function(e){
+  e.preventDefault();
+  add_condition('recent_except_genres', $(this).data('programgenre'))
+});
+
 $("body").on('click', '#whitelist_program_btn', function(e){
   e.preventDefault();
   add_condition('recent_whitelist_program', $(this).data('program'))
@@ -110,7 +116,7 @@ function make_list(ret) {
     tmp = '<img src="' + data[i].image + '" class="img-fluid">'
     str += j_col(3, tmp)
 
-    tmp = '<strong>' + data[i].programtitle + '  ' 
+    tmp = '<strong>' + data[i].programtitle + '  '
     if (data[i].episodenumber != '') {
       tmp += data[i].episodenumber + '회';
     }
@@ -126,14 +132,14 @@ function make_list(ret) {
     //  str += '<p>' + data.data[i].description.replace('\n', '<br>') + '<p>';
     tmp += '<strong>파일명</strong> : ' + data[i].filename;
     if (data[i].drm) {
-      tmp += " (" + text_color('DRM') + ")";  
+      tmp += " (" + text_color('DRM') + ")";
     }
 
     tmp += '<br>';
     tmp += '<strong>에피소드 번호 / 제목</strong> : ' + data[i].episodenumber + ' / ' + data[i].episodetitle;
     tmp += '<br>';
-    
-    tmp += '<strong>상태</strong> : ' 
+
+    tmp += '<strong>상태</strong> : '
     if (data[i].completed) {
       tmp += '<span style="color:blue">다운로드 완료</span>';
     } else if (data[i].user_abort) {
@@ -169,6 +175,8 @@ function make_list(ret) {
         tmp += '에피소드 제외 episodenumber';
       } else if (data[i].etc_abort == 16) {
         tmp += '에피소드 제외 episodetitle';
+      } else if (data[i].etc_abort == 17) {
+        tmp += '패스 - 제외 장르';
       } else if (data[i].etc_abort == 7) {
         tmp += '권한 없음';
       } else if (data[i].etc_abort == 6) {
@@ -192,17 +200,18 @@ function make_list(ret) {
     if (data[i].download_speed != null) {
       tmp += '<strong>다운속도</strong> : ' + data[i].download_speed+ '&nbsp;&nbsp;';;
     }
-    tmp += '<br>' 
+    tmp += '<br>'
     if (data[i].end_time != '' && data[i].end_time != null) {
       tmp += '<strong>완료시간</strong> : ' + data[i].end_time + ' (' + data[i].download_time+'초)'
     }
-    
+
     tmp2 = j_button('basic_search', '에피소드 검색', {'code':data[i].contentid});
     tmp2 += j_button('program_search_on_program_btn', '프로그램 검색', {'code':data[i].programid});
     tmp2 += j_button('json_btn', 'JSON', {'idx':i});
     tmp2 += j_button('program_search_btn', '목록 검색', {'program':data[i].programtitle});
     tmp2 += j_button('except_channel_btn', '제외채널', {'channel':data[i].channelname});
     tmp2 += j_button('except_program_btn', '제외프로그램', {'program':data[i].programtitle});
+    tmp2 += j_button('except_genres_btn', '제외장르', {'programgenre':data[i].programgenre});
     tmp2 += j_button('whitelist_program_btn', '포함프로그램', {'program':data[i].programtitle});
     tmp += j_button_group(tmp2)
     str += j_col(9, tmp)
@@ -213,6 +222,6 @@ function make_list(ret) {
   $("#list").html(str);
 }
 
-</script>    
+</script>
 {% endblock %}
 

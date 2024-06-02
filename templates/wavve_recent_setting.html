@@ -28,7 +28,7 @@
   {{ macros.setting_input_int('recent_ffmpeg_max_count', '동시 다운로드 수', value=arg['recent_ffmpeg_max_count'], desc='동시에 다운로드 할 에피소드 갯수입니다.') }}
   {{ macros.setting_checkbox('recent_retry_user_abort', '사용자 중지 항목 다시 받기', value=arg['recent_retry_user_abort'], desc='On : 다음 스케쥴링 때 다시 받습니다.') }}
   {{ macros.setting_radio_with_value('recent_download_mode', '다운로드 모드', [['blacklist', '블랙리스트'], ['whitelist', '화이트리스트']], value=arg['recent_download_mode']) }}
-  {{ macros.setting_input_text('recent_search_genre', '추가 검색 장르', value=arg['recent_search_genre'], col='9', desc=['추가로 검색할 장르', '| 로 구분', '드라마|예능|시사|교양|해외시리즈|애니메이션|스포츠|키즈']) }}
+  {{ macros.setting_input_text('recent_search_genres', '추가 검색 장르', value=arg['recent_search_genres'], col='9', desc=['추가로 검색할 장르', ', 로 구분', '드라마,예능,해외시리즈,애니메이션,스포츠,키즈,시사교양']) }}
   {{ macros.setting_input_int('recent_search_days', '추가 검색 제한 일', value=arg['recent_search_days'], min='1', placeholder='1', desc=['추가 검색 제한 일로 계산한 과거 날짜 까지를 최근으로 인식']) }}
 {{ macros.m_tab_content_end() }}
 
@@ -49,6 +49,7 @@
 {{ macros.m_tab_content_start('blacklist', false) }}
   {{ macros.setting_input_textarea('recent_except_channel', '제외 채널', value=arg['recent_except_channel'], desc=['채널 이름과 일치하면 제외합니다.', ', 또는 Enter로 구분']) }}
   {{ macros.setting_input_textarea('recent_except_program', '제외 프로그램', value=arg['recent_except_program'], desc=['이 곳에 있는 항목이 프로그램에 이름에 포함되어 있으면 제외합니다.', ', 또는 Enter로 구분']) }}
+  {{ macros.setting_input_text('recent_except_genres', '제외 장르', value=arg['recent_except_genres'], col='9', desc=['제외할 장르', ', 로 구분', '드라마,예능,해외시리즈,애니메이션,스포츠,키즈,시사교양']) }}
 {{ macros.m_tab_content_end() }}
 
 {{ macros.m_tab_content_start('whitelist', false) }}
