@@ -104,6 +104,10 @@ $("body").on('click', '#whitelist_program_btn', function(e){
   e.preventDefault();
   add_condition('recent_whitelist_program', $(this).data('program'))
 });
+$("body").on('click', '#whitelist_genres_btn', function(e){
+  e.preventDefault();
+  add_condition('recent_whitelist_genres', $(this).data('programgenre'))
+});
 ///////////////////////
 
 
@@ -215,6 +219,7 @@ function make_list(ret) {
     tmp2 += j_button('except_program_btn', '제외프로그램', {'program':data[i].programtitle});
     tmp2 += j_button('except_genres_btn', '제외장르', {'programgenre':data[i].programgenre});
     tmp2 += j_button('whitelist_program_btn', '포함프로그램', {'program':data[i].programtitle});
+    tmp2 += j_button('whitelist_genres_btn', '포함장르', {'programgenre':data[i].programgenre});
     tmp += j_button_group(tmp2)
     str += j_col(9, tmp)
     str += j_row_end();
