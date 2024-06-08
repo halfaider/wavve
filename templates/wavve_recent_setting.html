@@ -14,7 +14,7 @@
     {{ macros.m_tab_head('blacklist', '블랙리스트 모드', false) }}
     {{ macros.m_tab_head('whitelist', '화이트리스트 모드', false) }}
     {{ macros.m_tab_head('etc', '예고편 등 처리', false) }}
-    {{ macros.m_tab_head('2160', 'UHD', false) }}
+    {{ macros.m_tab_head('uhd', 'UHD', false) }}
     {{ macros.m_tab_head('scheduler', '스케쥴링 & DB', false) }}
   {{ macros.m_tab_head_end() }}
 </nav>
@@ -63,7 +63,7 @@
   {{ macros.setting_input_textarea('recent_except_episode_episodetitle', '제외 에피소드 episodetitle', value=arg['recent_except_episode_episodetitle'], desc=['이 곳에 있는 항목이 에피소드 제목 부분에 포함되어 있으면 제외합니다.', ', 또는 Enter로 구분', 'episodenumber 값이 비어있는 경우만 체크합니다.']) }}
 {{ macros.m_tab_content_end() }}
 
-{{ macros.m_tab_content_start('2160', false) }}
+{{ macros.m_tab_content_start('uhd', false) }}
   {{ macros.setting_checkbox('recent_2160_receive_1080', '화질 2160p시 일정시간 후 1080p로 받기', value=arg['recent_2160_receive_1080'], desc='On : 기본 화질이 2160p인 경우 일정시간 대기 후 시간초과시 1080p로 받습니다.') }}
   {{ macros.setting_input_text('recent_2160_wait_minute', '화질 2160p시 일정시간 후 1080p로 받기 대기시간', value=arg['recent_2160_wait_minute'], col='3', desc=['방송이 DB에 입력된 시간 기준입니다. minute 단위']) }}
 {{ macros.m_tab_content_end() }}
