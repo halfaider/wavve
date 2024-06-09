@@ -58,7 +58,7 @@ try:
         ModuleBasic = SupportSC.load_module_P(P, 'mod_basic').ModuleBasic
         ModuleRecent = SupportSC.load_module_P(P, 'mod_recent').ModuleRecent
         ModuleProgram = SupportSC.load_module_P(P, 'mod_program').ModuleProgram
-    
+
     P.set_module_list([ModuleBasic, ModuleRecent, ModuleProgram])
 except Exception as e:
     P.logger.error(f'Exception:{str(e)}')
