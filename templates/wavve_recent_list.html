@@ -153,47 +153,35 @@ function make_list(ret) {
       tmp += '<span style="color:red">사용자 중지</span>';
     } else if (data[i].pf_abort) {
       tmp += '<span style="color:red">PF 중지</span>';
+    } else if (data[i].etc_abort == 0) {
+      tmp += '<span style="color:blue">처리중</span>';
+    } else if (data[i].etc_abort == 31) {
+      tmp += '<span style="color:blue">다운로드 중</span>';
     } else if (data[i].etc_abort > 0) {
       //str += '<span style="color:red">기타</span>';
       tmp += '<span style="color:red">';
-      if (data[i].etc_abort == 1) {
-        tmp += 'FFMPEG 시작 에러';
-      } else if (data[i].etc_abort == 2) {
-        tmp += 'FFMPEG 시작 타임오버';
-      } else if (data[i].etc_abort == 3) {
-        tmp += 'FFMPEG 강제 중지';
-      } else if (data[i].etc_abort == 4) {
-        tmp += 'FFMPEG HTTP FORBIDDEN';
-      } else if (data[i].etc_abort == 8) {
-        tmp += '퀵VOD 방송중';
-      } else if (data[i].etc_abort == 9) {
-        tmp += 'Retry too many(20)';
-      } else if (data[i].etc_abort == 21) {
-        tmp += 'many retry';
-      } else if (data[i].etc_abort == 11) {
-        tmp += '패스 - QVOD';
-      } else if (data[i].etc_abort == 12) {
-        tmp += '패스 - 제외 채널';
-      } else if (data[i].etc_abort == 13) {
-        tmp += '패스 - 제외 프로그램';
-      } else if (data[i].etc_abort == 14) {
-        tmp += '화이트리스트 제외';
-      } else if (data[i].etc_abort == 15) {
-        tmp += '에피소드 제외 episodenumber';
-      } else if (data[i].etc_abort == 16) {
-        tmp += '에피소드 제외 episodetitle';
-      } else if (data[i].etc_abort == 17) {
-        tmp += '패스 - 제외 장르';
-      } else if (data[i].etc_abort == 7) {
-        tmp += '권한 없음';
-      } else if (data[i].etc_abort == 6) {
-        tmp += '화질 없음';
-      } else if (data[i].etc_abort == 5) {
-        tmp += '2160p 대기';
-      } else if (data[i].etc_abort == 0) {
-        tmp += '처리중';
-      } else {
-        tmp += '다운로드중';
+      switch(data[i].etc_abort) {
+        case 0: tmp += '처리중'; break;
+        case 1: tmp += 'FFMPEG 시작 에러'; break;
+        case 2: tmp += 'FFMPEG 시작 타임오버'; break;
+        case 3: tmp += 'FFMPEG 강제 중지'; break;
+        case 4: tmp += 'FFMPEG HTTP FORBIDDEN'; break;
+        case 5: tmp += '2160p 대기'; break;
+        case 6: tmp += '화질 없음'; break;
+        case 7: tmp += '권한 없음'; break;
+        case 8: tmp += '퀵VOD 방송중'; break;
+        case 9: tmp += '너무 많은 시도 (20)'; break;
+        case 11: tmp += '패스 - QVOD'; break;
+        case 12: tmp += '패스 - 제외 채널'; break;
+        case 13: tmp += '패스 - 제외 프로그램'; break;
+        case 14: tmp += '화이트리스트 제외'; break;
+        case 15: tmp += '에피소드 제외 - 번호'; break;
+        case 16: tmp += '에피소드 제외 - 제목'; break;
+        case 17: tmp += '패스 - 제외 장르'; break;
+        case 18: tmp += '패스 - 프리뷰'; break;
+        case 21: tmp += 'many retry'; break;
+        case 33: tmp += '데이터 갱신 실패'; break;
+        default: tmp += '다운로드중'; break;
       }
       tmp += '</span>';
     }

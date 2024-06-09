@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 
-{{ macros.m_button_group([['globalSettingSaveBtn', '설정 저장'], ['globalOneExecuteBtn', '1회 실행'], ['globalImmediatelyExecuteBtn', '즉시 실행'], ['globalDbDeleteBtn', '에피소드 목록 DB 초기화']])}}
+{{ macros.m_button_group([['globalSettingSaveBtn', '설정 저장'], ['globalOneExecuteBtn', '1회 실행'], ['globalImmediatelyExecuteBtn', '즉시 실행'], ['globalDbDeleteBtn', '에피소드 목록 DB 초기화'], ['reset_status_of_all_btn', '에피소드 상태 초기화']])}}
 {{ macros.m_row_start('5') }}
 {{ macros.m_row_end() }}
 
@@ -54,8 +54,8 @@
 
 {{ macros.m_tab_content_start('whitelist', false) }}
   {{ macros.setting_input_textarea('recent_whitelist_program', '포함 프로그램', value=arg['recent_whitelist_program'], desc=['이 곳에 있는 항목이 프로그램에 이름에 포함되어 있으면 다운로드합니다.', ', 또는 Enter로 구분']) }}
-  {{ macros.setting_checkbox('recent_whitelist_first_episode_download', '첫회 받기', value=arg['recent_whitelist_first_episode_download'], desc='On : 포함 프로그램에 방송이 없어도 첫 에피소드를 다운로드합니다.') }}
   {{ macros.setting_input_text('recent_whitelist_genres', '포함 장르', value=arg['recent_whitelist_genres'], col='9', desc=['다운로드할 장르', ', 로 구분', '드라마,예능,해외시리즈,애니메이션,스포츠,키즈,시사교양']) }}
+  {{ macros.setting_checkbox('recent_whitelist_first_episode_download', '첫회 받기', value=arg['recent_whitelist_first_episode_download'], desc='On : 포함 프로그램/장르에 방송이 없어도 첫 에피소드를 다운로드합니다.') }}
 {{ macros.m_tab_content_end() }}
 
 {{ macros.m_tab_content_start('etc', false) }}
@@ -101,6 +101,12 @@ function set_download_mode(type) {
   }
 }
 
+
+$("body").on('click', '#reset_status_of_all_btn', function(e){
+  globalConfirmModal('상태 초기화', "모든 VOD의 상태를 초기화 할까요?", function() {
+    globalSendCommand('reset_status_of_all');
+  });
+});
 
 </script>
 {% endblock %}
