@@ -1,7 +1,7 @@
 title: "웨이브"
-version: "1.0.11"
+version: "1.0.12"
 package_name: "wavve"
-developer: "soju6jan"
+developer: "soju6jan,halfaider"
 description: "웨이브 VOD 다운로더"
 home: "https://github.com/halfaider/wavve"
 
