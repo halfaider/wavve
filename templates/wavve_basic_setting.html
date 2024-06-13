@@ -9,6 +9,7 @@
 <form id="setting">
 {{ macros.setting_select('basic_quality', '기본 화질', [['2160p', '2160p'], ['1080p', '1080p'], ['720p', '720p'], ['480p', '480p'], ['360p', '360p']], col='3', value=arg['basic_quality']) }}
 {{ macros.setting_input_text('basic_save_path', '저장 폴더', value=arg['basic_save_path'], desc=['절대경로 혹은 {PATH_DATA}/download 와 같은 데이터 폴더 기준 상대 경로']) }}
+{{ macros.setting_select('basic_drm', 'DRM_tool', [['WV', 'aria2c'], ['RE', 'm3u8dl_RE']], col='3', value=arg['basic_drm']) }}
 </form>
 
 
@@ -17,5 +18,5 @@ $(document).ready(function(){
 });
 
 
-</script>    
+</script>
 {% endblock %}

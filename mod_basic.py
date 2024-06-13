@@ -32,6 +32,7 @@ class ModuleBasic(PluginModuleBase):
             f"{self.name}_quality": "1080p",
             f"{self.name}_save_path": "{PATH_DATA}" + os.sep + "download",
             f"{self.name}_recent_code": "",
+            f"{self.name}_drm": "WV",
         }
         self.last_data = None
 
@@ -66,22 +67,26 @@ class ModuleBasic(PluginModuleBase):
                         headers=self.download_headers,
                     )
                 else:
-                    downloader = WVDownloader(
-                        {
-                            'callback_id': 'wavve_basic',
-                            'logger' : P.logger,
-                            'mpd_url' : self.last_data['streaming']['play_info']['uri'],
-                            'code' : self.last_data['code'],
-                            'output_filename' : self.last_data['available']['filename'],
-                            'license_headers' : self.last_data['streaming']['play_info']['drm_key_request_properties'],
-                            'license_url' : self.last_data['streaming']['play_info']['drm_license_uri'],
-                            'mpd_headers': self.last_data['streaming']['play_info']['mpd_headers'],
-                            'clean' : False,
-                            'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
-                            'folder_output': save_path,
-                            'proxies': SupportWavve._SupportWavve__get_proxies(),
-                        }
-                    )
+                    parameters = {
+                        'callback_id': 'wavve_basic',
+                        'logger' : P.logger,
+                        'mpd_url' : self.last_data['streaming']['play_info']['uri'],
+                        'code' : self.last_data['code'],
+                        'output_filename' : self.last_data['available']['filename'],
+                        'license_headers' : self.last_data['streaming']['play_info']['drm_key_request_properties'],
+                        'license_url' : self.last_data['streaming']['play_info']['drm_license_uri'],
+                        'mpd_headers': self.last_data['streaming']['play_info']['mpd_headers'],
+                        'clean' : False,
+                        'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
+                        'folder_output': save_path,
+                        'proxies': SupportWavve._SupportWavve__get_proxies(),
+                    }
+                    match P.ModelSetting.get('basic_drm'):
+                        case 'WV':
+                            downloader = WVDownloader(parameters)
+                        case 'RE':
+                            from RE_tool import REDownloader
+                            downloader = REDownloader(parameters)
                 # 자막 다운로드
                 self.download_webvtts(self.last_data['streaming'].get('subtitles', []), f"{save_path}/{self.last_data['available']['filename']}")
                 downloader.start()
