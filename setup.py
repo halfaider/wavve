@@ -1,3 +1,5 @@
+from plugin import *
+
 setting = {
     'filepath' : __file__,
     'use_db': True,
@@ -41,25 +43,11 @@ setting = {
     },
     'default_route': 'normal',
 }
-from plugin import *
-
-DEFINE_DEV = False
-if os.path.exists(os.path.join(os.path.dirname(__file__), 'mod_basic.py')):
-    DEFINE_DEV = True
 
 P = create_plugin_instance(setting)
-try:
-    if DEFINE_DEV:
-        from .mod_basic import ModuleBasic
-        from .mod_program import ModuleProgram
-        from .mod_recent import ModuleRecent
-    else:
-        from support import SupportSC
-        ModuleBasic = SupportSC.load_module_P(P, 'mod_basic').ModuleBasic
-        ModuleRecent = SupportSC.load_module_P(P, 'mod_recent').ModuleRecent
-        ModuleProgram = SupportSC.load_module_P(P, 'mod_program').ModuleProgram
 
-    P.set_module_list([ModuleBasic, ModuleRecent, ModuleProgram])
-except Exception as e:
-    P.logger.error(f'Exception:{str(e)}')
-    P.logger.error(traceback.format_exc())
+from .mod_basic import ModuleBasic
+from .mod_program import ModuleProgram
+from .mod_recent import ModuleRecent
+
+P.set_module_list([ModuleBasic, ModuleRecent, ModuleProgram])
