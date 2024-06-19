@@ -14,7 +14,7 @@ from wv_tool import WVDownloader
 from wv_tool.lib.mpegdash.parser import MPEGDASHParser
 from wv_tool.tool import MP4DECRYPT
 from support import SupportSubprocess
-from .setup import P
+from .setup import P, F
 
 BIN_DIR = pathlib.Path(__file__).parent / 'bin' / platform.system()
 if platform.machine() == 'aarch64':
@@ -29,10 +29,12 @@ class REDownloader(WVDownloader):
         try:
             mpd_file = pathlib.Path(self.output_filepath).with_suffix('.mpd')
             MPEGDASHParser.write(self.mpd, str(mpd_file))
-            file_name = pathlib.Path(self.output_filename).with_suffix('')
+            file_name = str(pathlib.Path(self.output_filename).with_suffix(''))
+            # 버그: 파일 이름에 comma가 있으면 오류: 우리, 집
+            file_name = file_name.replace(',', '')
             command = [
                 str(RE_EXECUTE), str(mpd_file),
-                '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', str(file_name), '-M', 'mp4',
+                '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', file_name, '-M', 'mp4',
                 '--base-url', self.mpd_base_url, '--write-meta-json', 'False',
                 '--decryption-binary-path', SHAKA_PACKAGER, '--use-shaka-packager',
                 '--ffmpeg-binary-path', '/usr/bin/ffmpeg', '--mp4-real-time-decryption',
@@ -48,24 +50,25 @@ class REDownloader(WVDownloader):
 
             process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             try:
-                re_logger = get_logger('N_m3u8DL-RE', '/data/log')
+                re_logger = get_logger('N_m3u8DL-RE', str(pathlib.Path(F.config['path_data']) / 'log'))
                 for line in iter(process.stdout.readline, b''):
                     if getattr(self, '_stop_flag', self._WVDownloader__stop_flag):
-                        break
+                        self.logger.debug(f'Stop downloading...')
+                        process.terminate()
+                        return False
                     msg = line.decode('utf-8').strip()
                     re_logger.debug(msg)
-                if getattr(self, '_stop_flag', self._WVDownloader__stop_flag):
-                    process.terminate()
-                    return False
                 process.wait(timeout=3600)
             except:
                 self.logger.error(traceback.format_exc())
                 process.kill()
                 return False
-
-            return True
+            if process.returncode == 0:
+                return True
+            else:
+                self.logger.warning(f'Process exit code: {process.returncode}')
+                return False
         except Exception as e:
-            self.logger.error(f"Exception:{str(e)}")
             self.logger.error(traceback.format_exc())
         finally:
             mpd_file.unlink(missing_ok=True)

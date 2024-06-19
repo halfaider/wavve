@@ -19,7 +19,7 @@ from support_site import SupportWavve
 from wv_tool import WVDownloader
 
 from .setup import F, P
-from .downloader import download_webvtts
+from .downloader import REDownloader, download_webvtts
 
 
 name = 'program'
@@ -44,6 +44,7 @@ class ModuleProgram(PluginModuleBase):
             f"{self.name}_ffmpeg_max_count": "4",
             f"{self.name}_quality": "1080p",
             f"{self.name}_failed_redownload": "False",
+            f"{self.name}_drm": "WV",
         }
         self.web_list_model = ModelWavveProgram
         default_route_socketio_module(self, attach='/queue')
@@ -200,23 +201,22 @@ class ModuleProgram(PluginModuleBase):
                         headers=self.get_module('basic').download_headers
                     )
                 else:
-                    downloader = WVDownloader(
-                        {
-                            'callback_id': f"{P.package_name}_{self.name}_{db_item.id}",
-                            'logger' : P.logger,
-                            'mpd_url' : streaming_data['play_info']['uri'],
-                            'code' : db_item.episode_code,
-                            'output_filename' : db_item.filename,
-                            'license_headers' : streaming_data['play_info']['drm_key_request_properties'],
-                            'license_url' : streaming_data['play_info']['drm_license_uri'],
-                            'mpd_headers': streaming_data['play_info']['mpd_headers'],
-                            'clean' : True,
-                            'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
-                            'folder_output': save_path,
-                            'proxies': SupportWavve._SupportWavve__get_proxies(),
-                        },
-                        callback_function=self.wvtool_callback_function
-                    )
+                    params = {
+                        'callback_id': f"{P.package_name}_{self.name}_{db_item.id}",
+                        'logger' : P.logger,
+                        'mpd_url' : streaming_data['play_info']['uri'],
+                        'code' : db_item.episode_code,
+                        'output_filename' : db_item.filename,
+                        'license_headers' : streaming_data['play_info']['drm_key_request_properties'],
+                        'license_url' : streaming_data['play_info']['drm_license_uri'],
+                        'mpd_headers': streaming_data['play_info']['mpd_headers'],
+                        'clean' : True,
+                        'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
+                        'folder_output': save_path,
+                        'proxies': SupportWavve._SupportWavve__get_proxies(),
+                    }
+                    downloader_cls = REDownloader if P.ModelSetting.get('program_drm') == 'RE' else WVDownloader
+                    downloader = downloader_cls(params, callback_function=self.wvtool_callback_function)
                 # 자막 다운로드
                 download_webvtts(streaming_data.get('subtitles', []), f"{save_path}/{db_item.filename}")
                 downloader.start()

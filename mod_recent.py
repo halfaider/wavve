@@ -19,7 +19,7 @@ from support_site import SupportWavve
 from wv_tool import WVDownloader
 
 from .setup import F, P
-from .downloader import download_webvtts
+from .downloader import REDownloader, download_webvtts
 
 
 name = 'recent'
@@ -57,6 +57,7 @@ class ModuleRecent(PluginModuleBase):
             f"{self.name}_search_days": "15",
             f"{self.name}_except_genres": "",
             f"{self.name}_whitelist_genres": "",
+            f"{self.name}_drm": "WV",
         }
         self.web_list_model = ModelWavveRecent
         self.current_download_count = 0
@@ -338,14 +339,13 @@ class ModuleRecent(PluginModuleBase):
         except:
             P.logger.error(traceback.format_exc())
         # UHD 대기 재시도
-        P.logger.debug(f'Retry vods waiting for UHD...')
-        self.pick_out_recent_vods(ModelWavveRecent.get_episodes_by_etc_abort(5))
+        retry_vods = ModelWavveRecent.get_episodes_by_etc_abort(5)
         # QVOD 방송중 재시도
-        P.logger.debug(f'Retry qvods...')
-        self.pick_out_recent_vods(ModelWavveRecent.get_episodes_by_etc_abort(8))
+        retry_vods.extend(ModelWavveRecent.get_episodes_by_etc_abort(8))
         # 사용자 중지 재시도
-        P.logger.debug(f'Retry vods canceled by user...')
-        self.pick_out_recent_vods(ModelWavveRecent.get_episodes_by_etc_abort(30))
+        retry_vods.extend(ModelWavveRecent.get_episodes_by_user_abort(True))
+        P.logger.debug(f'Retry vods...')
+        self.pick_out_recent_vods(retry_vods)
         # JSON 데이터 갱신 실패 재시도
         P.logger.debug(f'Retry vods failed while retrieving...')
         for vod in ModelWavveRecent.get_episodes_by_etc_abort(33):
@@ -374,23 +374,22 @@ class ModuleRecent(PluginModuleBase):
                     vod.start_time = datetime.datetime.now()
                     vod.etc_abort = 31
                     if vod.drm:
-                        downloader = WVDownloader(
-                            {
-                                'callback_id': f"{P.package_name}_{self.name}_{vod.id}",
-                                'logger' : P.logger,
-                                'mpd_url' : vod.playurl,
-                                'code' : vod.contentid,
-                                'output_filename' : vod.filename,
-                                'license_headers' : vod.streaming_json['play_info']['drm_key_request_properties'],
-                                'license_url' : vod.streaming_json['play_info']['drm_license_uri'],
-                                'mpd_headers': vod.streaming_json['play_info']['mpd_headers'],
-                                'clean' : True,
-                                'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
-                                'folder_output': save_path,
-                                'proxies': SupportWavve._SupportWavve__get_proxies(),
-                            },
-                            callback_function=self.wvtool_callback_function
-                        )
+                        params = {
+                            'callback_id': f"{P.package_name}_{self.name}_{vod.id}",
+                            'logger' : P.logger,
+                            'mpd_url' : vod.playurl,
+                            'code' : vod.contentid,
+                            'output_filename' : vod.filename,
+                            'license_headers' : vod.streaming_json['play_info']['drm_key_request_properties'],
+                            'license_url' : vod.streaming_json['play_info']['drm_license_uri'],
+                            'mpd_headers': vod.streaming_json['play_info']['mpd_headers'],
+                            'clean' : True,
+                            'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
+                            'folder_output': save_path,
+                            'proxies': SupportWavve._SupportWavve__get_proxies(),
+                        }
+                        downloader_cls = REDownloader if P.ModelSetting.get('recent_drm') == 'RE' else WVDownloader
+                        downloader = downloader_cls(params, callback_function=self.wvtool_callback_function)
                     else:
                         tmp = SupportWavve.get_prefer_url(vod.playurl)
                         downloader = SupportFfmpeg(
@@ -690,6 +689,14 @@ class ModelWavveRecent(ModelBase):
             return F.db.session.query(cls) \
                 .filter((cls.call == 'recent') | (cls.call == None)) \
                 .filter_by(etc_abort=etc_abort) \
+                .with_for_update().all()
+
+    @classmethod
+    def get_episodes_by_user_abort(cls, user_abort: bool) -> list:
+        with F.app.app_context():
+            return F.db.session.query(cls) \
+                .filter((cls.call == 'recent') | (cls.call == None)) \
+                .filter_by(user_abort=user_abort) \
                 .with_for_update().all()
 
     # 오버라이딩
