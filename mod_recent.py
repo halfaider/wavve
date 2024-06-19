@@ -19,6 +19,7 @@ from support_site import SupportWavve
 from wv_tool import WVDownloader
 
 from .setup import F, P
+from .downloader import download_webvtts
 
 
 name = 'recent'
@@ -404,7 +405,7 @@ class ModuleRecent(PluginModuleBase):
                             callback_function=self.ffmpeg_listener,
                         )
                     # 자막 다운로드
-                    self.get_module('basic').download_webvtts(vod.streaming_json.get('subtitles', []), f"{save_path}/{vod.filename}")
+                    download_webvtts(vod.streaming_json.get('subtitles', []), f"{save_path}/{vod.filename}")
                     # 다운로드 시작
                     while self.current_download_count > max(P.ModelSetting.get_int(f"{self.name}_ffmpeg_max_count") - 1, 0):
                         P.logger.debug(f'The number of downloading: {self.current_download_count} / {P.ModelSetting.get_int(f"{self.name}_ffmpeg_max_count")}')

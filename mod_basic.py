@@ -1,13 +1,8 @@
 import os
 import re
 import traceback
-import urllib.parse
-import pathlib
-from io import BytesIO
 
 import flask
-import requests
-import webvtt
 
 from plugin.create_plugin import PluginBase
 from plugin.logic_module_base import PluginModuleBase
@@ -17,6 +12,7 @@ from support_site import SupportWavve
 from wv_tool import WVDownloader
 
 from .setup import F, P
+from .downloader import REDownloader, download_webvtts
 
 
 name = 'basic'
@@ -85,10 +81,9 @@ class ModuleBasic(PluginModuleBase):
                         case 'WV':
                             downloader = WVDownloader(parameters)
                         case 'RE':
-                            from RE_tool import REDownloader
                             downloader = REDownloader(parameters)
                 # 자막 다운로드
-                self.download_webvtts(self.last_data['streaming'].get('subtitles', []), f"{save_path}/{self.last_data['available']['filename']}")
+                download_webvtts(self.last_data['streaming'].get('subtitles', []), f"{save_path}/{self.last_data['available']['filename']}")
                 downloader.start()
             case 'program_page':
                 data = SupportWavve.vod_program_contents_programid(arg1, page=int(arg2))
@@ -159,39 +154,3 @@ class ModuleBasic(PluginModuleBase):
         from sjva import Auth
         if Auth.get_auth_status()['ret'] == False:
             raise Exception('auth fail!')
-
-    @classmethod
-    def download_webvtts(cls, subtitles: list, video_file_path: str) -> None:
-        for subtitle in subtitles:
-            lang = subtitle.get('languagecode', 'ko')
-            url = subtitle.get('url', None)
-            if url:
-                url_parts: urllib.parse.ParseResult = urllib.parse.urlparse(url)
-                headers = {
-                    "Accept": "application/json, text/plain, */*",
-                    "Accept-Encoding": "gzip, deflate, br, zstd",
-                    "Accept-Language": "ko,ko-KR;q=0.9,en-US;q=0.8,en;q=0.7",
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "DNT": "1",
-                    "Host": url_parts.hostname,
-                    "Origin": "https://www.wavve.com",
-                    "Pragma": "no-cache",
-                    "Referer": "https://www.wavve.com/",
-                    "Sec-Fetch-Dest": "empty",
-                    "Sec-Fetch-Mode": "cors",
-                    "Sec-Fetch-Site": "same-site",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-                }
-                srt_file = pathlib.Path(video_file_path).with_suffix(f'.{lang}.srt')
-                response = requests.request('GET', url, headers=headers)
-                if response.status_code == 200:
-                    try:
-                        vtt = webvtt.from_buffer(BytesIO(response.content))
-                        with open(srt_file, 'w') as f:
-                            vtt.write(f, format='srt')
-                    except:
-                        P.logger.error(traceback.format_exc())
-                else:
-                    P.logger.error(f'Downloading subtitle failed: {str(srt_file)}')
-

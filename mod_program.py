@@ -19,6 +19,7 @@ from support_site import SupportWavve
 from wv_tool import WVDownloader
 
 from .setup import F, P
+from .downloader import download_webvtts
 
 
 name = 'program'
@@ -217,7 +218,7 @@ class ModuleProgram(PluginModuleBase):
                         callback_function=self.wvtool_callback_function
                     )
                 # 자막 다운로드
-                self.get_module('basic').download_webvtts(streaming_data.get('subtitles', []), f"{save_path}/{db_item.filename}")
+                download_webvtts(streaming_data.get('subtitles', []), f"{save_path}/{db_item.filename}")
                 downloader.start()
 
                 self.current_ffmpeg_count += 1
