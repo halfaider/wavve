@@ -46,12 +46,7 @@ class REDownloader(WVDownloader):
                 command.append('--key')
                 command.append(f'{key["kid"]}:{key["key"]}')
 
-            # SupportSubprocess로 실행하면 느림, why?
-            #process = SupportSubprocess(command, print_log=True, stdout_callback=self.stdout_callback)
-            #process.start()
-
             process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-
             try:
                 re_logger = get_logger('N_m3u8DL-RE', '/data/log')
                 for line in iter(process.stdout.readline, b''):
@@ -59,16 +54,15 @@ class REDownloader(WVDownloader):
                         break
                     msg = line.decode('utf-8').strip()
                     re_logger.debug(msg)
-
                 if getattr(self, '_stop_flag', self._WVDownloader__stop_flag):
                     process.terminate()
                     return False
-
                 process.wait(timeout=3600)
             except:
                 self.logger.error(traceback.format_exc())
                 process.kill()
                 return False
+
             return True
         except Exception as e:
             self.logger.error(f"Exception:{str(e)}")
