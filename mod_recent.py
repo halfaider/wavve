@@ -58,6 +58,7 @@ class ModuleRecent(PluginModuleBase):
             f"{self.name}_except_genres": "",
             f"{self.name}_whitelist_genres": "",
             f"{self.name}_drm": "WV",
+            f"{self.name}_subtitle_langs": "all",
         }
         self.web_list_model = ModelWavveRecent
         self.current_download_count = 0
@@ -257,8 +258,8 @@ class ModuleRecent(PluginModuleBase):
                 else:
                     vod.etc_abort = 0
             else:
-                vod.etc_abort = 6
-                P.logger.error(f"{settings['quality']} is unavailable: {vod.contentid}")
+                vod.etc_abort = 33
+                P.logger.error(f"{vod.quality} of {vod.contentid} is not match with {settings['quality']} of the setting.")
                 return
         # finally
         vod.etc_abort = 0
@@ -344,6 +345,8 @@ class ModuleRecent(PluginModuleBase):
         retry_vods.extend(ModelWavveRecent.get_episodes_by_etc_abort(8))
         # 사용자 중지 재시도
         retry_vods.extend(ModelWavveRecent.get_episodes_by_user_abort(True))
+        # 다운로드 도중 실패 재시도
+        retry_vods.extend(ModelWavveRecent.get_episodes_by_etc_abort(31))
         P.logger.debug(f'Retry vods...')
         self.pick_out_recent_vods(retry_vods)
         # JSON 데이터 갱신 실패 재시도
@@ -404,7 +407,11 @@ class ModuleRecent(PluginModuleBase):
                             callback_function=self.ffmpeg_listener,
                         )
                     # 자막 다운로드
-                    download_webvtts(vod.streaming_json.get('subtitles', []), f"{save_path}/{vod.filename}")
+                    download_webvtts(
+                        vod.streaming_json.get('subtitles', []),
+                        f"{save_path}/{vod.filename}",
+                        P.ModelSetting.get_list(f'{self.name}_subtitle_langs', delimeter=',')
+                    )
                     # 다운로드 시작
                     while self.current_download_count > max(P.ModelSetting.get_int(f"{self.name}_ffmpeg_max_count") - 1, 0):
                         P.logger.debug(f'The number of downloading: {self.current_download_count} / {P.ModelSetting.get_int(f"{self.name}_ffmpeg_max_count")}')

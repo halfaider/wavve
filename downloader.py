@@ -78,13 +78,16 @@ class REDownloader(WVDownloader):
         self.logger.debug(f'{mode}: {data}')
 
 
-def download_webvtts(subtitles: list, video_file_path: str) -> None:
+def download_webvtts(subtitles: list, video_file_path: str, wanted: list) -> None:
+    if not wanted:
+        return
     for subtitle in subtitles:
-        url = subtitle.get('url', None)
-        if not url:
-            continue
-        lang = subtitle.get('languagecode', 'ko')
-        download_webvtt(url, lang, video_file_path)
+        if 'all' in wanted or subtitle.get('languagecode') in wanted:
+            url = subtitle.get('url', None)
+            if not url:
+                continue
+            lang = subtitle.get('languagecode', 'ko')
+            download_webvtt(url, lang, video_file_path)
 
 
 def download_webvtt(url: str, lang: str, video_file_path: str) -> None:
@@ -107,7 +110,7 @@ def download_webvtt(url: str, lang: str, video_file_path: str) -> None:
     }
     srt_file = pathlib.Path(video_file_path).with_suffix(f'.{lang}.srt')
     try:
-        response = requests.request('GET', url, headers=headers)
+        response = requests.request('GET', url, headers=headers, timeout=300)
         if response.status_code == 200:
             vtt = webvtt.from_buffer(BytesIO(response.content))
             with open(srt_file, 'w') as f:

@@ -1,5 +1,6 @@
 import os
 import re
+import pathlib
 import traceback
 
 import flask
@@ -12,7 +13,7 @@ from support_site import SupportWavve
 from wv_tool import WVDownloader
 
 from .setup import F, P
-from .downloader import REDownloader, download_webvtts
+from .downloader import REDownloader, download_webvtts, download_webvtt
 
 
 name = 'basic'
@@ -29,6 +30,7 @@ class ModuleBasic(PluginModuleBase):
             f"{self.name}_save_path": "{PATH_DATA}" + os.sep + "download",
             f"{self.name}_recent_code": "",
             f"{self.name}_drm": "WV",
+            f"{self.name}_subtitle_langs": "all",
         }
         self.last_data = None
 
@@ -83,11 +85,18 @@ class ModuleBasic(PluginModuleBase):
                         case 'RE':
                             downloader = REDownloader(parameters)
                 # 자막 다운로드
-                download_webvtts(self.last_data['streaming'].get('subtitles', []), f"{save_path}/{self.last_data['available']['filename']}")
+                download_webvtts(
+                    self.last_data['streaming'].get('subtitles', []),
+                    f"{save_path}/{self.last_data['available']['filename']}",
+                    P.ModelSetting.get_list(f'{self.name}_subtitle_langs', delimeter=',')
+                )
                 downloader.start()
             case 'program_page':
                 data = SupportWavve.vod_program_contents_programid(arg1, page=int(arg2))
                 ret =  {'url_type': 'program', 'page':arg2, 'code':arg1, 'data' : data}
+            case 'download_subtitle':
+                save_path = ToolUtil.make_path(P.ModelSetting.get(f"{self.name}_save_path"))
+                download_webvtt(arg1, arg2, str(pathlib.Path(save_path) / arg3))
         return flask.jsonify(ret)
 
     def analyze(self, url: str, quality: str = None) -> dict | None:

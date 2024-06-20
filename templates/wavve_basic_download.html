@@ -73,11 +73,22 @@ $("body").on('change', '#select_quality', function(e){
   });
 });
 
+$("body").on('change', '#select_subtitle', function(e){
+  e.preventDefault();
+  $("#download_subtitle_btn").data('url', $("#select_subtitle option:selected").data('url'));
+  $("#download_subtitle_btn").data('lang', $("#select_subtitle option:selected").prop('value'));
+});
+
+$("body").on('click', '#download_subtitle_btn', function(e){
+  e.preventDefault();
+  globalSendCommand('download_subtitle', $(this).data('url'), $(this).data('lang'), $(this).data('filename'));
+});
+
 // 다음 영화 검색
 $("body").on('click', '#daum_search_btn', function(e){
   e.preventDefault();
   title = $(this).data('title');
-  window.open('https://search.daum.net/search?w=tot&q=' + title, '_blank'); 
+  window.open('https://search.daum.net/search?w=tot&q=' + title, '_blank');
 });
 
 function make_program_page(ret) {
@@ -133,10 +144,10 @@ function make_analyse_result(data) {
     tmp += data.episode.synopsis + '<br><br>';
     tmp += '파일명 : ' + data.available.filename;
     if (data.available.action == 'dash') {
-      tmp += " (" + text_color('DRM') + ")";  
+      tmp += " (" + text_color('DRM') + ")";
     }
     tmp += "<br><br>";
-    
+
     if (data.available.preview) {
       tmp += '다운로드 권한 없음<br><br>';
       tmp2 = ''
@@ -150,7 +161,7 @@ function make_analyse_result(data) {
       tmp2 += '</div>'
       tmp2 += j_button('download_start_btn', '다운로드', {'filename':data.available.filename, 'url':data.streaming.playurl, 'action':data.available.action})
     }
-    
+
     tmp2 += j_button('program_search_btn', '프로그램 검색', {'code':data.episode.programid});
     tmp += j_button_group(tmp2);
     str += j_col(9, tmp);
@@ -168,13 +179,14 @@ function make_analyse_result(data) {
     tmp += data.info.synopsis + '<br><br>';
     tmp += '파일명 : ' + data.available.filename;
     if (data.available.action == 'dash') {
-      tmp += " (" + text_color('DRM') + ")";  
+      tmp += " (" + text_color('DRM') + ")";
     }
     tmp += "<br><br>";
     if (data.available.preview) {
       tmp += '다운로드 권한 없음<br><br>';
       tmp2 = ''
     } else {
+      console.log(data);
       tmp2 = '<div class="form-inline">'
       tmp2 += '화질선택&nbsp;&nbsp;&nbsp;&nbsp;<select id="select_quality" name="select_quality" class="form-control form-control-sm">'
       for (j in data.streaming.qualities.list) {
@@ -191,73 +203,19 @@ function make_analyse_result(data) {
     document.getElementById("detail").innerHTML = str;
     document.getElementById("more").innerHTML = '';
   }
+  if (data['url_type'] != 'program' && data.streaming.subtitles.length > 0) {
+    let subtitle = '<div class="form-inline">';
+    subtitle += '자막선택&nbsp;&nbsp;&nbsp;&nbsp;<select id="select_subtitle" name="select_subtitle" class="form-control form-control-sm">';
+    for (let idx in data.streaming.subtitles) {
+      let lang = data.streaming.subtitles[idx].languagecode;
+      subtitle += '<option value="' + lang + '" data-url=' + data.streaming.subtitles[idx].url + '>' + lang + '</option>';
+    }
+    subtitle += '</select>&nbsp;&nbsp;&nbsp;&nbsp;';
+    subtitle += j_button('download_subtitle_btn', '자막 다운로드', {'filename':data.available.filename, 'url': data.streaming.subtitles[0].url, 'lang': data.streaming.subtitles[0].languagecode});
+    subtitle += '</div>';
+    $('#detail div:nth-child(2)').append(subtitle);
+  }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-</script>    
+</script>
 {% endblock %}

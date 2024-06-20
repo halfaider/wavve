@@ -31,6 +31,7 @@
   {{ macros.setting_input_text('recent_search_genres', '추가 검색 장르', value=arg['recent_search_genres'], col='9', desc=['추가로 검색할 장르', ', 로 구분', '드라마,예능,해외시리즈,애니메이션,스포츠,키즈,시사교양']) }}
   {{ macros.setting_input_int('recent_search_days', '추가 검색 제한 일', value=arg['recent_search_days'], min='1', placeholder='1', desc=['추가 검색 제한 일로 계산한 과거 날짜 까지를 최근으로 인식']) }}
   {{ macros.setting_select('recent_drm', 'DRM_tool', [['WV', 'aria2c'], ['RE', 'm3u8dl_RE']], col='3', value=arg['recent_drm']) }}
+  {{ macros.setting_input_text('recent_subtitle_langs', '자막 언어', value=arg['recent_subtitle_langs'], col='9', desc=['all: 모든 언어', 'ko: 한국어 자막만 다운', 'ko,en: 한국어, 영어 다운로드 (구분: 쉼표)', '공백: 다운로드 하지 않음', '기본 모듈에서 제공되는 언어 코드 확인']) }}
 {{ macros.m_tab_content_end() }}
 
 {{ macros.m_tab_content_start('scheduler', false) }}

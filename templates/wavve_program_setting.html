@@ -12,6 +12,7 @@
   {{ macros.setting_select('program_quality', '기본 화질', [['2160p', '2160p'], ['1080p', '1080p'], ['720p', '720p'], ['480p', '480p'], ['360p', '360p']], col='3', value=arg['program_quality']) }}
   {{ macros.setting_checkbox('program_failed_redownload', '자동으로 다시 받기', value=arg['program_failed_redownload'], desc='On : 플러그인 로딩시 미완료인 항목은 자동으로 다시 받습니다.') }}
   {{ macros.setting_select('program_drm', 'DRM_tool', [['WV', 'aria2c'], ['RE', 'm3u8dl_RE']], col='3', value=arg['program_drm']) }}
+  {{ macros.setting_input_text('program_subtitle_langs', '자막 언어', value=arg['program_subtitle_langs'], col='9', desc=['all: 모든 언어', 'ko: 한국어 자막만 다운', 'ko,en: 한국어, 영어 다운로드 (구분: 쉼표)', '공백: 다운로드 하지 않음', '기본 모듈에서 제공되는 언어 코드 확인']) }}
 </form>
 
 <script type="text/javascript">

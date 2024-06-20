@@ -45,6 +45,7 @@ class ModuleProgram(PluginModuleBase):
             f"{self.name}_quality": "1080p",
             f"{self.name}_failed_redownload": "False",
             f"{self.name}_drm": "WV",
+            f"{self.name}_subtitle_langs": "all",
         }
         self.web_list_model = ModelWavveProgram
         default_route_socketio_module(self, attach='/queue')
@@ -218,7 +219,11 @@ class ModuleProgram(PluginModuleBase):
                     downloader_cls = REDownloader if P.ModelSetting.get('program_drm') == 'RE' else WVDownloader
                     downloader = downloader_cls(params, callback_function=self.wvtool_callback_function)
                 # 자막 다운로드
-                download_webvtts(streaming_data.get('subtitles', []), f"{save_path}/{db_item.filename}")
+                download_webvtts(
+                    streaming_data.get('subtitles', []),
+                    f"{save_path}/{db_item.filename}",
+                    P.ModelSetting.get_list(f'{self.name}_subtitle_langs', delimeter=',')
+                )
                 downloader.start()
 
                 self.current_ffmpeg_count += 1
