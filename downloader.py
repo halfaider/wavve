@@ -1,10 +1,11 @@
-import os
 import platform
 import pathlib
 import traceback
 import subprocess
 import urllib.parse
 import logging
+import datetime
+import re
 from io import BytesIO
 
 import requests
@@ -13,9 +14,10 @@ import webvtt
 from wv_tool import WVDownloader
 from wv_tool.lib.mpegdash.parser import MPEGDASHParser
 from wv_tool.tool import MP4DECRYPT
-from support import SupportSubprocess
 from .setup import P, F
 
+
+PATH_DATA = pathlib.Path(F.config['path_data'])
 BIN_DIR = pathlib.Path(__file__).parent / 'bin' / platform.system()
 if platform.machine() == 'aarch64':
     BIN_DIR = BIN_DIR.parent / 'LinuxArm'
@@ -25,16 +27,28 @@ SHAKA_PACKAGER = BIN_DIR / 'packager-linux-arm64'
 
 class REDownloader(WVDownloader):
 
-    def download_mpd(self):
+    def download_mpd(self) -> bool:
         try:
-            mpd_file = pathlib.Path(self.output_filepath).with_suffix('.mpd')
-            MPEGDASHParser.write(self.mpd, str(mpd_file))
-            file_name = str(pathlib.Path(self.output_filename).with_suffix(''))
             # 버그: 파일 이름에 comma가 있으면 오류: 우리, 집
-            file_name = file_name.replace(',', '')
+            self.output_filename = self.output_filename.replace(',', '')
+            output_filename = pathlib.Path(self.output_filename)
+            container = output_filename.suffix
+            container = container[1:] if container else 'mkv'
+            output_dir = pathlib.Path(self.output_dir)
+            output_filepath = output_dir / output_filename
+            self.output_filepath = str(output_filepath)
+
+            if output_filepath.exists():
+                self.logger.warning(f'Already exists: {str(output_filepath)}')
+                self.set_status('EXIST_OUTPUT_FILEPATH')
+                return False
+
+            mpd_file = output_filepath.with_suffix('.mpd')
+            MPEGDASHParser.write(self.mpd, str(mpd_file))
+
             command = [
                 str(RE_EXECUTE), str(mpd_file),
-                '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', file_name, '-M', 'mp4',
+                '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filename.stem, '-M', container,
                 '--base-url', self.mpd_base_url, '--write-meta-json', 'False',
                 '--decryption-binary-path', SHAKA_PACKAGER, '--use-shaka-packager',
                 '--ffmpeg-binary-path', '/usr/bin/ffmpeg', '--mp4-real-time-decryption',
@@ -49,15 +63,8 @@ class REDownloader(WVDownloader):
                 command.append(f'{key["kid"]}:{key["key"]}')
 
             process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            self.parse_re_stdout(process)
             try:
-                re_logger = get_logger('N_m3u8DL-RE', str(pathlib.Path(F.config['path_data']) / 'log'))
-                for line in iter(process.stdout.readline, b''):
-                    if getattr(self, '_stop_flag', self._WVDownloader__stop_flag):
-                        self.logger.debug(f'Stop downloading...')
-                        process.terminate()
-                        return False
-                    msg = line.decode('utf-8').strip()
-                    re_logger.debug(msg)
                 process.wait(timeout=3600)
             except:
                 self.logger.error(traceback.format_exc())
@@ -74,8 +81,92 @@ class REDownloader(WVDownloader):
             mpd_file.unlink(missing_ok=True)
         return False
 
-    def stdout_callback(self, call_id, mode, data):
-        self.logger.debug(f'{mode}: {data}')
+    def download(self) -> bool:
+        result = super().download()
+        self.end_time = datetime.datetime.now()
+        self.download_time = self.end_time - self.start_time
+        return result
+
+    def download_m3u8(self) -> bool:
+        try:
+            # 버그: 파일 이름에 comma가 있으면 오류: 우리, 집
+            self.output_filename = self.output_filename.replace(',', '')
+            output_filename = pathlib.Path(self.output_filename)
+            container = output_filename.suffix
+            container = container[1:] if container else 'mkv'
+            output_dir = pathlib.Path(self.output_dir)
+            output_filepath = output_dir / output_filename
+            self.output_filepath = str(output_filepath)
+
+            if output_filepath.exists():
+                self.logger.warning(f'Already exists: {str(output_filepath)}')
+                self.set_status('EXIST_OUTPUT_FILEPATH')
+                return False
+
+            # RE가 세그먼트 주소에 파라미터를 강제로 붙여서 요청하기 때문에 403 에러
+            command = [
+                str(RE_EXECUTE), self.mpd_url,
+                '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filename.stem, '-M', container,
+                '--base-url', self.mpd_base_url, '--write-meta-json', 'False',
+                '--ffmpeg-binary-path', '/usr/bin/ffmpeg', '--auto-select',
+                '--concurrent-download', '--log-level', 'DEBUG', '--no-log', '--append-url-params', 'False',
+            ]
+            for k, v in self.mpd_headers.items():
+                command.append('-H')
+                command.append(f'{k}: {v}')
+
+            process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            self.parse_re_stdout(process)
+            try:
+                process.wait(timeout=3600)
+            except:
+                self.logger.error(traceback.format_exc())
+                process.kill()
+                return False
+            if process.returncode == 0:
+                return True
+            else:
+                self.logger.warning(f'Process exit code: {process.returncode}')
+                return False
+        except Exception as e:
+            self.logger.error(traceback.format_exc())
+        return False
+
+    def parse_re_stdout(self, process: subprocess.Popen) -> None:
+        re_logger = get_logger('N_m3u8DL-RE', str(PATH_DATA / 'log'))
+        timestamp_ptn = re.compile(r'^\d{1,2}:\d{2}:\d{2}\.\d+\s(.+)$')
+        ansi_ptn = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        progress_ptn = re.compile(r'(Vid|Aud)\s(\d+x\d+|.+)\s\|\s.+\s(\d+)%')
+        progress_count = 0
+        downloaded = set()
+        for line in iter(process.stdout.readline, b''):
+            try:
+                if getattr(self, '_stop_flag', self._WVDownloader__stop_flag):
+                    self.logger.debug(f'Stop downloading...')
+                    process.terminate()
+                    return False
+                msg = line.decode('utf-8').strip()
+                msg = ansi_ptn.sub('', msg)
+                if not msg:
+                    continue
+                re_logger.debug(msg)
+                match = progress_ptn.match(msg)
+                if match:
+                    progress_count += 1
+                    percent = int(match.group(3))
+                    if match.group(3) in downloaded:
+                        continue
+                    if percent > 99:
+                        downloaded.add(match.group(3))
+                    if percent > 99 or progress_count > 30:
+                        self.logger.debug(msg)
+                        progress_count = 0
+                    continue
+                match = timestamp_ptn.match(msg)
+                if match:
+                    self.logger.debug(match.group(1))
+            except:
+                self.logger.error(traceback.format_exc())
 
 
 def download_webvtts(subtitles: list, video_file_path: str, wanted: list) -> None:
@@ -130,6 +221,4 @@ def get_logger(name: str = None, log_path: str = None) -> logging.Logger:
         fileHandler = logging.handlers.RotatingFileHandler(filename=str(pathlib.Path(log_path) / f'{name}.log'), maxBytes=file_max_bytes, backupCount=5, encoding='utf8', delay=True)
         fileHandler.setFormatter(formatter)
         logger.addHandler(fileHandler)
-    streamHandler = logging.StreamHandler()
-    logger.addHandler(streamHandler)
     return logger

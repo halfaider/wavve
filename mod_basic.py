@@ -37,8 +37,12 @@ class ModuleBasic(PluginModuleBase):
     @property
     def download_headers(self) -> dict:
         return {
-        "Accept": "application/json, text/plain, */*",
-        'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        "Accept": "*/*",
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Accept-Language': 'ko,ko-KR;q=0.9,en-US;q=0.8,en;q=0.7',
+        'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache',
     }
 
     def process_menu(self, page_name: str, req: flask.Request) -> flask.Response:
@@ -55,26 +59,42 @@ class ModuleBasic(PluginModuleBase):
             case 'download_start':
                 save_path = ToolUtil.make_path(P.ModelSetting.get(f"{self.name}_save_path"))
                 if arg3 == 'hls':
-                    #logger.warning(os.path.join(F.config['path_data'], P.ModelSetting.get(f"{self.name}_save_path"), arg2))
-                    downloader = SupportFfmpeg(
-                        SupportWavve.get_prefer_url(arg1),
-                        arg2,
-                        save_path=save_path,
-                        #callback_function=self.ffmpeg_listener,
-                        callback_id=f"{P.package_name}",
-                        headers=self.download_headers,
-                    )
+                    match 'TEST':
+                        case 'RE':
+                            P.logger.info(self.last_data)
+                            downloader = REDownloader({
+                                'callback_id': 'wavve_basic',
+                                'logger': P.logger,
+                                'mpd_url': self.last_data['streaming']['playurl'],
+                                'streaming_protocol': 'hls',
+                                'code': self.last_data['code'],
+                                'output_filename': self.last_data['available']['filename'],
+                                'license_url': None,
+                                'mpd_headers': self.download_headers,
+                                'clean': True,
+                                'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
+                                'folder_output': save_path,
+                                'proxies': SupportWavve._SupportWavve__get_proxies(),
+                            })
+                        case _:
+                            downloader = SupportFfmpeg(
+                                SupportWavve.get_prefer_url(arg1),
+                                arg2,
+                                save_path=save_path,
+                                callback_id=f"{P.package_name}",
+                                headers=self.download_headers,
+                            )
                 else:
                     parameters = {
                         'callback_id': 'wavve_basic',
-                        'logger' : P.logger,
-                        'mpd_url' : self.last_data['streaming']['play_info']['uri'],
-                        'code' : self.last_data['code'],
-                        'output_filename' : self.last_data['available']['filename'],
-                        'license_headers' : self.last_data['streaming']['play_info']['drm_key_request_properties'],
-                        'license_url' : self.last_data['streaming']['play_info']['drm_license_uri'],
+                        'logger': P.logger,
+                        'mpd_url': self.last_data['streaming']['play_info']['uri'],
+                        'code': self.last_data['code'],
+                        'output_filename': self.last_data['available']['filename'],
+                        'license_headers': self.last_data['streaming']['play_info']['drm_key_request_properties'],
+                        'license_url': self.last_data['streaming']['play_info']['drm_license_uri'],
                         'mpd_headers': self.last_data['streaming']['play_info']['mpd_headers'],
-                        'clean' : False,
+                        'clean': True,
                         'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
                         'folder_output': save_path,
                         'proxies': SupportWavve._SupportWavve__get_proxies(),
@@ -101,7 +121,6 @@ class ModuleBasic(PluginModuleBase):
 
     def analyze(self, url: str, quality: str = None) -> dict | None:
         try:
-            #logger.debug('analyze :%s', url)
             url_type = None
             code = None
             patterns = {
