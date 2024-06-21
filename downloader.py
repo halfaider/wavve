@@ -158,9 +158,11 @@ class REDownloader(WVDownloader):
                         continue
                     if percent > 99:
                         downloaded.add(match.group(3))
-                    if percent > 99 or progress_count > 30:
-                        self.logger.debug(msg)
-                        progress_count = 0
+                    self.logger.debug(msg)
+                    # 테스트 환경과 실제 도커의 로그 빈도수 차이나는 이유?
+                    #if percent > 99 or progress_count > 30:
+                    #    self.logger.debug(msg)
+                    #    progress_count = 0
                     continue
                 match = timestamp_ptn.match(msg)
                 if match:
