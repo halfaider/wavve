@@ -3,7 +3,6 @@ import pathlib
 import traceback
 import subprocess
 import urllib.parse
-import logging
 import datetime
 import re
 import functools
@@ -23,8 +22,12 @@ BIN_DIR = pathlib.Path(__file__).parent / 'bin' / platform.system()
 if platform.machine() == 'aarch64':
     BIN_DIR = BIN_DIR.parent / 'LinuxArm'
 RE_EXECUTE = BIN_DIR / 'N_m3u8DL-RE'
+# Windows에서 muxer의 bin_path 지정이 잘 안돼서 동일 경로에 저장
 if platform.system() == 'Windows':
     RE_EXECUTE = RE_EXECUTE.with_name('N_m3u8DL-RE.exe')
+    FFMPEG = BIN_DIR / 'ffmpeg.exe'
+else:
+    FFMPEG = '/usr/bin/ffmpeg'
 
 
 class REDownloader(WVDownloader):
@@ -65,43 +68,36 @@ class REDownloader(WVDownloader):
 
     def get_command(self, what_for: str = 'download_mpd') -> list:
         output_filepath = pathlib.Path(self.output_filepath)
-        FFMPEG = pathlib.Path(F.PluginManager.get_plugin_instance('ffmpeg').ModelSetting.get('ffmpeg_path'))
+        plugin_ffmpeg = F.PluginManager.get_plugin_instance('ffmpeg')
+        if plugin_ffmpeg:
+            FFMPEG = pathlib.Path(plugin_ffmpeg.ModelSetting.get('ffmpeg_path'))
         match what_for:
             case 'download_mpd':
-                container = output_filepath.suffix[1:] if output_filepath.suffix else 'mkv'
+                # 웨이브는 특정 CDN에서 invalid XML로 응답함
                 mpd_file = output_filepath.with_suffix('.mpd')
                 MPEGDASHParser.write(self.mpd, str(mpd_file))
-                # 버그: 윈도우에서 '-M' 지정하면 ffmpeg 혹은 mkvmerge 찾을 수 없다는 오류발생
-                # 버그: 윈도우에서 shaka_packager로 decrypt 하면 재생 안됨
+                # 실시간 decrypt 시 shaka-packager를 권장하나 윈도우에서 오작동
                 command = [
                     str(RE_EXECUTE), str(mpd_file),
-                    '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem,
-                    '--base-url', self.mpd_base_url, '--write-meta-json', 'False',
-                    '--decryption-binary-path', MP4DECRYPT,
-                    '--ffmpeg-binary-path', str(FFMPEG), '--mp4-real-time-decryption',
-                    '--select-video', 'best', '--select-audio', 'best', '--select-subtitle', 'all',
-                    '--concurrent-download', '--log-level', 'INFO', '--no-log',
+                    '--base-url', self.mpd_base_url,
+                    '--decryption-binary-path', MP4DECRYPT, '--mp4-real-time-decryption',
+                    '--mux-after-done', f'format=mkv:muxer=mkvmerge',
                 ]
                 for key in self.key:
-                    command.append('--key')
-                    command.append(f'{key["kid"]}:{key["key"]}')
+                    command.extend(['--key', f'{key["kid"]}:{key["key"]}'])
             case 'download_m3u8':
-                container = output_filepath.suffix[1:] if output_filepath.suffix else 'mp4'
-                # 버그: 윈도우에서 '-M' 지정하면 ffmpeg 혹은 mkvmerge 찾을 수 없다는 오류발생
-                command = [
-                    str(RE_EXECUTE), self.mpd_url,
-                    '--ffmpeg-binary-path', str(FFMPEG), '--auto-select',
-                    '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem,
-                    '--write-meta-json', 'False',
-                    '--concurrent-download', '--log-level', 'INFO', '--no-log', '--append-url-params', 'False',
-                ]
+                command = [str(RE_EXECUTE), self.mpd_url]
+        command.extend([
+            '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem,
+            '--auto-select', '--concurrent-download', '--log-level', 'INFO', '--no-log', '--write-meta-json', 'False',
+            '--ffmpeg-binary-path', str(FFMPEG),
+        ])
         for k, v in self.mpd_headers.items():
-                    command.append('-H')
-                    command.append(f'{k}: {v}')
+            command.extend(['-H', f'{k}: {v}'])
         return command
 
     def check_file_path(self) -> bool:
-        # 버그: 파일 이름에 comma가 있으면 오류: 우리, 집
+        # 파일 이름에 comma 가 있으면 오류: ERROR: cannot open fragments info file
         self.output_filename = self.output_filename.replace(',', '')
         output_filename = pathlib.Path(self.output_filename)
         output_dir = pathlib.Path(self.output_dir)
@@ -124,7 +120,6 @@ class REDownloader(WVDownloader):
             self.logger.error(traceback.format_exc())
             process.kill()
             return False
-        # 버그: RE가 error 발생해도 0 return
         if process.returncode == 0:
             return True
         else:
@@ -132,12 +127,7 @@ class REDownloader(WVDownloader):
             return False
 
     def parse_re_stdout(self, process: subprocess.Popen) -> None:
-        re_logger = get_logger('N_m3u8DL-RE', str(PATH_DATA / 'log'))
-        timestamp_ptn = re.compile(r'^\d{1,2}:\d{2}:\d{2}\.\d+\s(.+)$')
         ansi_ptn = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-        progress_ptn = re.compile(r'(Vid|Aud)\s(\d+x\d+|.+)\s\|\s.+\s(\d+)%')
-        progress_count = 0
-        downloaded = set()
         for line in iter(process.stdout.readline, b''):
             try:
                 if getattr(self, '_stop_flag', self._WVDownloader__stop_flag):
@@ -147,28 +137,11 @@ class REDownloader(WVDownloader):
                 try:
                     msg = line.decode('utf-8').strip()
                 except UnicodeDecodeError as ude:
-                    self.logger.warning(repr(ude))
                     msg = line.decode('cp949').strip()
                 msg = ansi_ptn.sub('', msg)
                 if not msg:
                     continue
-                re_logger.debug(msg)
-                match = progress_ptn.match(msg)
-                if match:
-                    progress_count += 1
-                    percent = int(match.group(3))
-                    if match.group(3) in downloaded:
-                        continue
-                    if percent > 99:
-                        downloaded.add(match.group(3))
-                    # 도커에서 로그 빈도수 차이나는 이유?
-                    if percent > 99 or progress_count > 10:
-                        self.logger.debug(msg)
-                        progress_count = 0
-                    continue
-                match = timestamp_ptn.match(msg)
-                if match:
-                    self.logger.debug(match.group(1))
+                self.logger.debug(msg)
             except:
                 self.logger.error(traceback.format_exc())
 
@@ -189,18 +162,9 @@ def download_webvtt(url: str, lang: str, video_file_path: str) -> None:
     url_parts: urllib.parse.ParseResult = urllib.parse.urlparse(url)
     headers = {
         "Accept": "application/json, text/plain, */*",
-        "Accept-Encoding": "gzip, deflate, br, zstd",
-        "Accept-Language": "ko,ko-KR;q=0.9,en-US;q=0.8,en;q=0.7",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
-        "DNT": "1",
         "Host": url_parts.hostname,
-        "Origin": "https://www.wavve.com",
-        "Pragma": "no-cache",
-        "Referer": "https://www.wavve.com/",
-        "Sec-Fetch-Dest": "empty",
-        "Sec-Fetch-Mode": "cors",
-        "Sec-Fetch-Site": "same-site",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
     }
     srt_file = pathlib.Path(video_file_path).with_suffix(f'.{lang}.srt')
@@ -214,15 +178,3 @@ def download_webvtt(url: str, lang: str, video_file_path: str) -> None:
             P.logger.error(f'Downloading subtitle failed: {str(srt_file)}')
     except:
         P.logger.error(traceback.format_exc())
-
-
-def get_logger(name: str = None, log_path: str = None) -> logging.Logger:
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
-    formatter = logging.Formatter(u'%(message)s')
-    file_max_bytes = 5 * 1024 * 1024
-    if log_path:
-        fileHandler = logging.handlers.RotatingFileHandler(filename=str(pathlib.Path(log_path) / f'{name}.log'), maxBytes=file_max_bytes, backupCount=5, encoding='utf8', delay=True)
-        fileHandler.setFormatter(formatter)
-        logger.addHandler(fileHandler)
-    return logger
