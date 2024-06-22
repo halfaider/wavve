@@ -59,6 +59,7 @@ class ModuleRecent(PluginModuleBase):
             f"{self.name}_whitelist_genres": "",
             f"{self.name}_drm": "WV",
             f"{self.name}_subtitle_langs": "all",
+            f"{self.name}_hls": "WV",
         }
         self.web_list_model = ModelWavveRecent
         self.current_download_count = 0
@@ -367,6 +368,8 @@ class ModuleRecent(PluginModuleBase):
             self.schedule_running = True
             self.schedule_started_at = datetime.datetime.now()
             save_path = ToolUtil.make_path(P.ModelSetting.get(f"{self.name}_save_path"))
+            foler_tmp = os.path.join(F.config['path_data'], 'tmp')
+            headers = self.get_module('basic').download_headers
             for vod in ModelWavveRecent.get_episodes_by_etc_abort(0):
                 try:
                     # 다운로드 준비
@@ -376,9 +379,10 @@ class ModuleRecent(PluginModuleBase):
                     vod.save_path = save_path
                     vod.start_time = datetime.datetime.now()
                     vod.etc_abort = 31
+                    callback_id = f'{P.package_name}_{self.name}_{vod.id}'
                     if vod.drm:
                         params = {
-                            'callback_id': f"{P.package_name}_{self.name}_{vod.id}",
+                            'callback_id': callback_id,
                             'logger' : P.logger,
                             'mpd_url' : vod.playurl,
                             'code' : vod.contentid,
@@ -387,25 +391,44 @@ class ModuleRecent(PluginModuleBase):
                             'license_url' : vod.streaming_json['play_info']['drm_license_uri'],
                             'mpd_headers': vod.streaming_json['play_info']['mpd_headers'],
                             'clean' : True,
-                            'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
+                            'folder_tmp': foler_tmp,
                             'folder_output': save_path,
                             'proxies': SupportWavve._SupportWavve__get_proxies(),
                         }
-                        downloader_cls = REDownloader if P.ModelSetting.get('recent_drm') == 'RE' else WVDownloader
+                        downloader_cls = REDownloader if P.ModelSetting.get(f'{self.name}_drm') == 'RE' else WVDownloader
                         downloader = downloader_cls(params, callback_function=self.wvtool_callback_function)
                     else:
-                        tmp = SupportWavve.get_prefer_url(vod.playurl)
-                        downloader = SupportFfmpeg(
-                            tmp,
-                            vod.filename,
-                            save_path=save_path,
-                            max_pf_count=None,
-                            headers=self.get_module('basic').download_headers,
-                            timeout_minute=60,
-                            proxy=None,
-                            callback_id=f"{P.package_name}_{self.name}_{vod.id}",
-                            callback_function=self.ffmpeg_listener,
-                        )
+                        match P.ModelSetting.get(f'{self.name}_hls'):
+                            case 'RE':
+                                if vod.streaming_json.get('authtype') == 'cookie':
+                                    headers['Cookie'] = vod.streaming_json.get('awscookie', '')
+                                downloader = REDownloader({
+                                    'callback_id': callback_id,
+                                    'logger': P.logger,
+                                    'mpd_url': vod.playurl,
+                                    'streaming_protocol': 'hls',
+                                    'code' : vod.contentid,
+                                    'output_filename' : vod.filename,
+                                    'license_url': None,
+                                    'mpd_headers': headers,
+                                    'clean': True,
+                                    'folder_tmp': foler_tmp,
+                                    'folder_output': save_path,
+                                    'proxies': SupportWavve._SupportWavve__get_proxies(),
+                                })
+                            case _:
+                                tmp = SupportWavve.get_prefer_url(vod.playurl)
+                                downloader = SupportFfmpeg(
+                                    tmp,
+                                    vod.filename,
+                                    save_path=save_path,
+                                    max_pf_count=None,
+                                    headers=headers,
+                                    timeout_minute=60,
+                                    proxy=None,
+                                    callback_id=callback_id,
+                                    callback_function=self.ffmpeg_listener,
+                                )
                     # 자막 다운로드
                     download_webvtts(
                         vod.streaming_json.get('subtitles', []),

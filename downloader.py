@@ -6,6 +6,7 @@ import urllib.parse
 import logging
 import datetime
 import re
+import functools
 from io import BytesIO
 
 import requests
@@ -22,115 +23,109 @@ BIN_DIR = pathlib.Path(__file__).parent / 'bin' / platform.system()
 if platform.machine() == 'aarch64':
     BIN_DIR = BIN_DIR.parent / 'LinuxArm'
 RE_EXECUTE = BIN_DIR / 'N_m3u8DL-RE'
-SHAKA_PACKAGER = BIN_DIR / 'packager-linux-arm64'
-
+SHAKA_PACKAGER = BIN_DIR / 'shaka_packager'
+if platform.system() == 'Windows':
+    RE_EXECUTE = RE_EXECUTE.with_name('N_m3u8DL-RE.exe')
+    SHAKA_PACKAGER = SHAKA_PACKAGER.with_name('shaka_packager.exe')
+FFMPEG = pathlib.Path('/usr/bin/ffmpeg')
 
 class REDownloader(WVDownloader):
 
-    def download_mpd(self) -> bool:
-        try:
-            # 버그: 파일 이름에 comma가 있으면 오류: 우리, 집
-            self.output_filename = self.output_filename.replace(',', '')
-            output_filename = pathlib.Path(self.output_filename)
-            container = output_filename.suffix
-            container = container[1:] if container else 'mkv'
-            output_dir = pathlib.Path(self.output_dir)
-            output_filepath = output_dir / output_filename
-            self.output_filepath = str(output_filepath)
-
-            if output_filepath.exists():
-                self.logger.warning(f'Already exists: {str(output_filepath)}')
-                self.set_status('EXIST_OUTPUT_FILEPATH')
-                return False
-
-            mpd_file = output_filepath.with_suffix('.mpd')
-            MPEGDASHParser.write(self.mpd, str(mpd_file))
-
-            command = [
-                str(RE_EXECUTE), str(mpd_file),
-                '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filename.stem, '-M', container,
-                '--base-url', self.mpd_base_url, '--write-meta-json', 'False',
-                '--decryption-binary-path', SHAKA_PACKAGER, '--use-shaka-packager',
-                '--ffmpeg-binary-path', '/usr/bin/ffmpeg', '--mp4-real-time-decryption',
-                '--select-video', 'best', '--select-audio', 'best', '--select-subtitle', 'all',
-                '--concurrent-download', '--log-level', 'INFO', '--no-log',
-            ]
-            for k, v in self.mpd_headers.items():
-                command.append('-H')
-                command.append(f'{k}: {v}')
-            for key in self.key:
-                command.append('--key')
-                command.append(f'{key["kid"]}:{key["key"]}')
-
-            process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            self.parse_re_stdout(process)
+    def downloadable(func: callable) -> callable:
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwds) -> bool:
             try:
-                process.wait(timeout=3600)
-            except:
+                if not self.check_file_path():
+                    return False
+                command = self.get_command(func.__name__)
+                return self.execute_command(command)
+            except Exception as e:
                 self.logger.error(traceback.format_exc())
-                process.kill()
-                return False
-            if process.returncode == 0:
-                return True
-            else:
-                self.logger.warning(f'Process exit code: {process.returncode}')
-                return False
-        except Exception as e:
-            self.logger.error(traceback.format_exc())
-        finally:
-            mpd_file.unlink(missing_ok=True)
+            finally:
+                func(self, *args, **kwds)
+            return False
+        return wrapper
+
+    @downloadable
+    def download_mpd(self) -> bool:
+        '''override'''
+        pathlib.Path(self.output_filepath).with_suffix('.mpd').unlink(missing_ok=True)
+        return False
+
+    @downloadable
+    def download_m3u8(self) -> bool:
+        '''override'''
         return False
 
     def download(self) -> bool:
+        '''override'''
         result = super().download()
         self.end_time = datetime.datetime.now()
         self.download_time = self.end_time - self.start_time
         return result
 
-    def download_m3u8(self) -> bool:
+    def get_command(self, what_for: str = 'download_mpd') -> list:
+        output_filepath = pathlib.Path(self.output_filepath)
+        match what_for:
+            case 'download_mpd':
+                container = output_filepath.suffix[1:] if output_filepath.suffix else 'mkv'
+                mpd_file = output_filepath.with_suffix('.mpd')
+                MPEGDASHParser.write(self.mpd, str(mpd_file))
+                command = [
+                    str(RE_EXECUTE), str(mpd_file),
+                    '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem, '-M', container,
+                    '--base-url', self.mpd_base_url, '--write-meta-json', 'False',
+                    '--decryption-binary-path', str(SHAKA_PACKAGER), '--use-shaka-packager',
+                    '--ffmpeg-binary-path', str(FFMPEG), '--mp4-real-time-decryption',
+                    '--select-video', 'best', '--select-audio', 'best', '--select-subtitle', 'all',
+                    '--concurrent-download', '--log-level', 'INFO', '--no-log',
+                ]
+                for key in self.key:
+                    command.append('--key')
+                    command.append(f'{key["kid"]}:{key["key"]}')
+            case 'download_m3u8':
+                container = output_filepath.suffix[1:] if output_filepath.suffix else 'mp4'
+                command = [
+                    str(RE_EXECUTE), self.mpd_url,
+                    '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem, '-M', container,
+                    '--write-meta-json', 'False',
+                    '--ffmpeg-binary-path', str(FFMPEG), '--auto-select',
+                    '--concurrent-download', '--log-level', 'DEBUG', '--no-log', '--append-url-params', 'False',
+                ]
+        for k, v in self.mpd_headers.items():
+                    command.append('-H')
+                    command.append(f'{k}: {v}')
+        return command
+
+    def check_file_path(self) -> bool:
+        # 버그: 파일 이름에 comma가 있으면 오류: 우리, 집
+        self.output_filename = self.output_filename.replace(',', '')
+        output_filename = pathlib.Path(self.output_filename)
+        output_dir = pathlib.Path(self.output_dir)
+        output_filepath = output_dir / output_filename
+        self.output_filepath = str(output_filepath)
+
+        if output_filepath.exists():
+            self.logger.warning(f'Already exists: {str(output_filepath)}')
+            self.set_status('EXIST_OUTPUT_FILEPATH')
+            return False
+        else:
+            return True
+
+    def execute_command(self, command: list) -> bool:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.parse_re_stdout(process)
         try:
-            # 버그: 파일 이름에 comma가 있으면 오류: 우리, 집
-            self.output_filename = self.output_filename.replace(',', '')
-            output_filename = pathlib.Path(self.output_filename)
-            container = output_filename.suffix
-            container = container[1:] if container else 'mkv'
-            output_dir = pathlib.Path(self.output_dir)
-            output_filepath = output_dir / output_filename
-            self.output_filepath = str(output_filepath)
-
-            if output_filepath.exists():
-                self.logger.warning(f'Already exists: {str(output_filepath)}')
-                self.set_status('EXIST_OUTPUT_FILEPATH')
-                return False
-
-            # RE가 세그먼트 주소에 파라미터를 강제로 붙여서 요청하기 때문에 403 에러
-            command = [
-                str(RE_EXECUTE), self.mpd_url,
-                '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filename.stem, '-M', container,
-                '--base-url', self.mpd_base_url, '--write-meta-json', 'False',
-                '--ffmpeg-binary-path', '/usr/bin/ffmpeg', '--auto-select',
-                '--concurrent-download', '--log-level', 'DEBUG', '--no-log', '--append-url-params', 'False',
-            ]
-            for k, v in self.mpd_headers.items():
-                command.append('-H')
-                command.append(f'{k}: {v}')
-
-            process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            self.parse_re_stdout(process)
-            try:
-                process.wait(timeout=3600)
-            except:
-                self.logger.error(traceback.format_exc())
-                process.kill()
-                return False
-            if process.returncode == 0:
-                return True
-            else:
-                self.logger.warning(f'Process exit code: {process.returncode}')
-                return False
-        except Exception as e:
+            process.wait(timeout=3600)
+        except:
             self.logger.error(traceback.format_exc())
-        return False
+            process.kill()
+            return False
+        if process.returncode == 0:
+            return True
+        else:
+            self.logger.warning(f'Process exit code: {process.returncode}')
+            return False
 
     def parse_re_stdout(self, process: subprocess.Popen) -> None:
         re_logger = get_logger('N_m3u8DL-RE', str(PATH_DATA / 'log'))

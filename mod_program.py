@@ -46,6 +46,7 @@ class ModuleProgram(PluginModuleBase):
             f"{self.name}_failed_redownload": "False",
             f"{self.name}_drm": "WV",
             f"{self.name}_subtitle_langs": "all",
+            f"{self.name}_hls": "WV",
         }
         self.web_list_model = ModelWavveProgram
         default_route_socketio_module(self, attach='/queue')
@@ -191,19 +192,41 @@ class ModuleProgram(PluginModuleBase):
                     continue
 
                 save_path = ToolUtil.make_path(P.ModelSetting.get(f"{self.name}_save_path"))
+                folder_tmp = os.path.join(F.config['path_data'], 'tmp')
+                headers = self.get_module('basic').download_headers
+                callback_id = f"{P.package_name}_{self.name}_{db_item.id}"
                 if not streaming_data['play_info']['drm']:
-                    tmp = SupportWavve.get_prefer_url(streaming_data['playurl'])
-                    downloader = SupportFfmpeg(
-                        tmp,
-                        db_item.filename,
-                        save_path=save_path,
-                        callback_function=self.ffmpeg_listener,
-                        callback_id=f"{P.package_name}_{self.name}_{db_item.id}",
-                        headers=self.get_module('basic').download_headers
-                    )
+                    match P.ModelSetting.get(f'{self.name}_hls'):
+                        case 'RE':
+                            if streaming_data['authtype'] == 'cookie':
+                                headers['Cookie'] = streaming_data.get('awscookie', '')
+                            downloader = REDownloader({
+                                'callback_id': callback_id,
+                                'logger': P.logger,
+                                'mpd_url': streaming_data['play_info']['uri'],
+                                'streaming_protocol': 'hls',
+                                'code' : db_item.episode_code,
+                                'output_filename' : db_item.filename,
+                                'license_url': None,
+                                'mpd_headers': headers,
+                                'clean': True,
+                                'folder_tmp': folder_tmp,
+                                'folder_output': save_path,
+                                'proxies': SupportWavve._SupportWavve__get_proxies(),
+                            })
+                        case _:
+                            tmp = SupportWavve.get_prefer_url(streaming_data['play_info']['uri'])
+                            downloader = SupportFfmpeg(
+                                tmp,
+                                db_item.filename,
+                                save_path=save_path,
+                                callback_function=self.ffmpeg_listener,
+                                callback_id=callback_id,
+                                headers=self.get_module('basic').download_headers
+                            )
                 else:
                     params = {
-                        'callback_id': f"{P.package_name}_{self.name}_{db_item.id}",
+                        'callback_id': callback_id,
                         'logger' : P.logger,
                         'mpd_url' : streaming_data['play_info']['uri'],
                         'code' : db_item.episode_code,
@@ -212,11 +235,11 @@ class ModuleProgram(PluginModuleBase):
                         'license_url' : streaming_data['play_info']['drm_license_uri'],
                         'mpd_headers': streaming_data['play_info']['mpd_headers'],
                         'clean' : True,
-                        'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
+                        'folder_tmp': folder_tmp,
                         'folder_output': save_path,
                         'proxies': SupportWavve._SupportWavve__get_proxies(),
                     }
-                    downloader_cls = REDownloader if P.ModelSetting.get('program_drm') == 'RE' else WVDownloader
+                    downloader_cls = REDownloader if P.ModelSetting.get(f'{self.name}_drm') == 'RE' else WVDownloader
                     downloader = downloader_cls(params, callback_function=self.wvtool_callback_function)
                 # 자막 다운로드
                 download_webvtts(

@@ -31,6 +31,7 @@ class ModuleBasic(PluginModuleBase):
             f"{self.name}_recent_code": "",
             f"{self.name}_drm": "WV",
             f"{self.name}_subtitle_langs": "all",
+            f"{self.name}_hls": "WV",
         }
         self.last_data = None
 
@@ -59,18 +60,20 @@ class ModuleBasic(PluginModuleBase):
             case 'download_start':
                 save_path = ToolUtil.make_path(P.ModelSetting.get(f"{self.name}_save_path"))
                 if arg3 == 'hls':
-                    match 'TEST':
+                    match P.ModelSetting.get(f'{self.name}_hls'):
                         case 'RE':
-                            P.logger.info(self.last_data)
+                            headers = self.download_headers
+                            if self.last_data['streaming']['authtype'] == 'cookie':
+                                headers['Cookie'] = self.last_data['streaming'].get('awscookie', '')
                             downloader = REDownloader({
                                 'callback_id': 'wavve_basic',
                                 'logger': P.logger,
-                                'mpd_url': self.last_data['streaming']['playurl'],
+                                'mpd_url': self.last_data['streaming']['play_info']['uri'],
                                 'streaming_protocol': 'hls',
                                 'code': self.last_data['code'],
                                 'output_filename': self.last_data['available']['filename'],
                                 'license_url': None,
-                                'mpd_headers': self.download_headers,
+                                'mpd_headers': headers,
                                 'clean': True,
                                 'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
                                 'folder_output': save_path,
@@ -99,11 +102,8 @@ class ModuleBasic(PluginModuleBase):
                         'folder_output': save_path,
                         'proxies': SupportWavve._SupportWavve__get_proxies(),
                     }
-                    match P.ModelSetting.get('basic_drm'):
-                        case 'WV':
-                            downloader = WVDownloader(parameters)
-                        case 'RE':
-                            downloader = REDownloader(parameters)
+                    downloader_cls = REDownloader if P.ModelSetting.get(f'{self.name}_drm') == 'RE' else WVDownloader
+                    downloader = downloader_cls(parameters)
                 # 자막 다운로드
                 download_webvtts(
                     self.last_data['streaming'].get('subtitles', []),
