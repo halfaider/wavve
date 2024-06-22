@@ -23,11 +23,9 @@ BIN_DIR = pathlib.Path(__file__).parent / 'bin' / platform.system()
 if platform.machine() == 'aarch64':
     BIN_DIR = BIN_DIR.parent / 'LinuxArm'
 RE_EXECUTE = BIN_DIR / 'N_m3u8DL-RE'
-SHAKA_PACKAGER = BIN_DIR / 'shaka_packager'
 if platform.system() == 'Windows':
     RE_EXECUTE = RE_EXECUTE.with_name('N_m3u8DL-RE.exe')
-    SHAKA_PACKAGER = SHAKA_PACKAGER.with_name('shaka_packager.exe')
-FFMPEG = pathlib.Path('/usr/bin/ffmpeg')
+
 
 class REDownloader(WVDownloader):
 
@@ -50,6 +48,7 @@ class REDownloader(WVDownloader):
     def download_mpd(self) -> bool:
         '''override'''
         pathlib.Path(self.output_filepath).with_suffix('.mpd').unlink(missing_ok=True)
+        pathlib.Path(self.output_filepath).with_suffix('.m4a').unlink(missing_ok=True)
         return False
 
     @downloadable
@@ -66,16 +65,19 @@ class REDownloader(WVDownloader):
 
     def get_command(self, what_for: str = 'download_mpd') -> list:
         output_filepath = pathlib.Path(self.output_filepath)
+        FFMPEG = pathlib.Path(F.PluginManager.get_plugin_instance('ffmpeg').ModelSetting.get('ffmpeg_path'))
         match what_for:
             case 'download_mpd':
                 container = output_filepath.suffix[1:] if output_filepath.suffix else 'mkv'
                 mpd_file = output_filepath.with_suffix('.mpd')
                 MPEGDASHParser.write(self.mpd, str(mpd_file))
+                # 버그: 윈도우에서 '-M' 지정하면 ffmpeg 혹은 mkvmerge 찾을 수 없다는 오류발생
+                # 버그: 윈도우에서 shaka_packager로 decrypt 하면 재생 안됨
                 command = [
                     str(RE_EXECUTE), str(mpd_file),
-                    '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem, '-M', container,
+                    '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem,
                     '--base-url', self.mpd_base_url, '--write-meta-json', 'False',
-                    '--decryption-binary-path', str(SHAKA_PACKAGER), '--use-shaka-packager',
+                    '--decryption-binary-path', MP4DECRYPT,
                     '--ffmpeg-binary-path', str(FFMPEG), '--mp4-real-time-decryption',
                     '--select-video', 'best', '--select-audio', 'best', '--select-subtitle', 'all',
                     '--concurrent-download', '--log-level', 'INFO', '--no-log',
@@ -85,12 +87,13 @@ class REDownloader(WVDownloader):
                     command.append(f'{key["kid"]}:{key["key"]}')
             case 'download_m3u8':
                 container = output_filepath.suffix[1:] if output_filepath.suffix else 'mp4'
+                # 버그: 윈도우에서 '-M' 지정하면 ffmpeg 혹은 mkvmerge 찾을 수 없다는 오류발생
                 command = [
                     str(RE_EXECUTE), self.mpd_url,
-                    '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem, '-M', container,
-                    '--write-meta-json', 'False',
                     '--ffmpeg-binary-path', str(FFMPEG), '--auto-select',
-                    '--concurrent-download', '--log-level', 'DEBUG', '--no-log', '--append-url-params', 'False',
+                    '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem,
+                    '--write-meta-json', 'False',
+                    '--concurrent-download', '--log-level', 'INFO', '--no-log', '--append-url-params', 'False',
                 ]
         for k, v in self.mpd_headers.items():
                     command.append('-H')
@@ -121,6 +124,7 @@ class REDownloader(WVDownloader):
             self.logger.error(traceback.format_exc())
             process.kill()
             return False
+        # 버그: RE가 error 발생해도 0 return
         if process.returncode == 0:
             return True
         else:
@@ -140,7 +144,11 @@ class REDownloader(WVDownloader):
                     self.logger.debug(f'Stop downloading...')
                     process.terminate()
                     return False
-                msg = line.decode('utf-8').strip()
+                try:
+                    msg = line.decode('utf-8').strip()
+                except UnicodeDecodeError as ude:
+                    self.logger.warning(repr(ude))
+                    msg = line.decode('cp949').strip()
                 msg = ansi_ptn.sub('', msg)
                 if not msg:
                     continue
@@ -153,11 +161,10 @@ class REDownloader(WVDownloader):
                         continue
                     if percent > 99:
                         downloaded.add(match.group(3))
-                    self.logger.debug(msg)
-                    # 테스트 환경과 실제 도커의 로그 빈도수 차이나는 이유?
-                    #if percent > 99 or progress_count > 30:
-                    #    self.logger.debug(msg)
-                    #    progress_count = 0
+                    # 도커에서 로그 빈도수 차이나는 이유?
+                    if percent > 99 or progress_count > 10:
+                        self.logger.debug(msg)
+                        progress_count = 0
                     continue
                 match = timestamp_ptn.match(msg)
                 if match:

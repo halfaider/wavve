@@ -68,7 +68,7 @@ class ModuleBasic(PluginModuleBase):
                             downloader = REDownloader({
                                 'callback_id': 'wavve_basic',
                                 'logger': P.logger,
-                                'mpd_url': self.last_data['streaming']['play_info']['uri'],
+                                'mpd_url': self.last_data['streaming']['playurl'],
                                 'streaming_protocol': 'hls',
                                 'code': self.last_data['code'],
                                 'output_filename': self.last_data['available']['filename'],
@@ -91,7 +91,7 @@ class ModuleBasic(PluginModuleBase):
                     parameters = {
                         'callback_id': 'wavve_basic',
                         'logger': P.logger,
-                        'mpd_url': self.last_data['streaming']['play_info']['uri'],
+                        'mpd_url': self.last_data['streaming']['playurl'],
                         'code': self.last_data['code'],
                         'output_filename': self.last_data['available']['filename'],
                         'license_headers': self.last_data['streaming']['play_info']['drm_key_request_properties'],
