@@ -5,6 +5,7 @@ import subprocess
 import urllib.parse
 import datetime
 import re
+import stat
 import functools
 from io import BytesIO
 
@@ -22,6 +23,9 @@ BIN_DIR = pathlib.Path(__file__).parent / 'bin' / platform.system()
 if platform.machine() == 'aarch64':
     BIN_DIR = BIN_DIR.parent / 'LinuxArm'
 RE_EXECUTE = BIN_DIR / 'N_m3u8DL-RE'
+if RE_EXECUTE.exists():
+    mode = RE_EXECUTE.stat().st_mode
+    RE_EXECUTE.chmod(mode | stat.S_IEXEC)
 # Windows에서 muxer의 bin_path 지정이 잘 안돼서 동일 경로에 저장
 if platform.system() == 'Windows':
     RE_EXECUTE = RE_EXECUTE.with_name('N_m3u8DL-RE.exe')
@@ -40,7 +44,7 @@ class REDownloader(WVDownloader):
                     return False
                 command = self.get_command(func.__name__)
                 return self.execute_command(command)
-            except Exception as e:
+            except Exception:
                 self.logger.error(traceback.format_exc())
             finally:
                 func(self, *args, **kwds)
@@ -51,7 +55,6 @@ class REDownloader(WVDownloader):
     def download_mpd(self) -> bool:
         '''override'''
         pathlib.Path(self.output_filepath).with_suffix('.mpd').unlink(missing_ok=True)
-        pathlib.Path(self.output_filepath).with_suffix('.m4a').unlink(missing_ok=True)
         return False
 
     @downloadable
@@ -66,7 +69,7 @@ class REDownloader(WVDownloader):
         self.download_time = self.end_time - self.start_time
         return result
 
-    def get_command(self, what_for: str = 'download_mpd') -> list:
+    def get_command(self, what_for: str = 'download_m3u8') -> list:
         output_filepath = pathlib.Path(self.output_filepath)
         plugin_ffmpeg = F.PluginManager.get_plugin_instance('ffmpeg')
         if plugin_ffmpeg:
