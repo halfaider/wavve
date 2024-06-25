@@ -196,6 +196,7 @@ class ModuleProgram(PluginModuleBase):
                 headers = self.get_module('basic').download_headers
                 callback_id = f"{P.package_name}_{self.name}_{db_item.id}"
                 if not streaming_data['play_info']['drm']:
+                    uri = streaming_data.get('play_info', {}).get('hls') or streaming_data.get('playurl')
                     match P.ModelSetting.get(f'{self.name}_hls'):
                         case 'RE':
                             if streaming_data['authtype'] == 'cookie':
@@ -203,7 +204,7 @@ class ModuleProgram(PluginModuleBase):
                             downloader = REDownloader({
                                 'callback_id': callback_id,
                                 'logger': P.logger,
-                                'mpd_url': streaming_data['play_info']['uri'],
+                                'mpd_url':  uri,
                                 'streaming_protocol': 'hls',
                                 'code' : db_item.episode_code,
                                 'output_filename' : db_item.filename,
@@ -215,7 +216,7 @@ class ModuleProgram(PluginModuleBase):
                                 'proxies': SupportWavve._SupportWavve__get_proxies(),
                             })
                         case _:
-                            tmp = SupportWavve.get_prefer_url(streaming_data['play_info']['uri'])
+                            tmp = SupportWavve.get_prefer_url(uri)
                             downloader = SupportFfmpeg(
                                 tmp,
                                 db_item.filename,

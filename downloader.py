@@ -74,22 +74,22 @@ class REDownloader(WVDownloader):
         plugin_ffmpeg = F.PluginManager.get_plugin_instance('ffmpeg')
         if plugin_ffmpeg:
             FFMPEG = pathlib.Path(plugin_ffmpeg.ModelSetting.get('ffmpeg_path'))
+        command = [str(RE_EXECUTE)]
         match what_for:
             case 'download_mpd':
                 # 웨이브는 특정 CDN에서 invalid XML로 응답함
                 mpd_file = output_filepath.with_suffix('.mpd')
                 MPEGDASHParser.write(self.mpd, str(mpd_file))
                 # 실시간 decrypt 시 shaka-packager를 권장하나 윈도우에서 오작동
-                command = [
-                    str(RE_EXECUTE), str(mpd_file),
-                    '--base-url', self.mpd_base_url,
+                command.extend([
+                    str(mpd_file), '--base-url', self.mpd_base_url,
                     '--decryption-binary-path', MP4DECRYPT, '--mp4-real-time-decryption',
                     '--mux-after-done', f'format=mkv:muxer=mkvmerge',
-                ]
+                ])
                 for key in self.key:
                     command.extend(['--key', f'{key["kid"]}:{key["key"]}'])
             case 'download_m3u8':
-                command = [str(RE_EXECUTE), self.mpd_url]
+                command.extend([self.mpd_url])
         command.extend([
             '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem,
             '--auto-select', '--concurrent-download', '--log-level', 'INFO', '--no-log', '--write-meta-json', 'False',
