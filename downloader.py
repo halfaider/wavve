@@ -130,7 +130,6 @@ class REDownloader(WVDownloader):
             return False
 
     def parse_re_stdout(self, process: subprocess.Popen) -> None:
-        ansi_ptn = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         for line in iter(process.stdout.readline, b''):
             try:
                 if getattr(self, '_stop_flag', self._WVDownloader__stop_flag):
@@ -139,9 +138,8 @@ class REDownloader(WVDownloader):
                     return False
                 try:
                     msg = line.decode('utf-8').strip()
-                except UnicodeDecodeError as ude:
+                except UnicodeDecodeError:
                     msg = line.decode('cp949').strip()
-                msg = ansi_ptn.sub('', msg)
                 if not msg:
                     continue
                 self.logger.debug(msg)
