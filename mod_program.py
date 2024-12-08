@@ -214,7 +214,7 @@ class ModuleProgram(PluginModuleBase):
                                 'folder_tmp': folder_tmp,
                                 'folder_output': save_path,
                                 'proxies': SupportWavve._SupportWavve__get_proxies(),
-                            })
+                            }, self.wvtool_callback_function)
                         case _:
                             tmp = SupportWavve.get_prefer_url(uri)
                             downloader = SupportFfmpeg(
