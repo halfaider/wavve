@@ -110,16 +110,16 @@ class ModuleRecent(PluginModuleBase):
             recents = SupportWavve.vod_newcontents(page=i).get('list', [])
             recent_ids = {epi['contentid'] for epi in recents}
             # 새로운 API 에서 수집한 id 목록
-            new_ids.update(SupportWavve.get_vod_ids_from_newcontents(i))
+            new_ids.update(SupportWavve.get_new_vod_ids(i))
             # 키워드 검색으로 수집한 id 목록
             for keyword in search_genres:
                 P.logger.debug(f'Searching: {keyword}')
-                new_ids.update(SupportWavve.get_vod_ids_from_search(keyword, page))
+                new_ids.update(SupportWavve.search_new_vod_ids(keyword, page))
             # 중복 제거 및 목록 통합
             new_ids -= collected_ids - recent_ids
             collected_ids |= recent_ids | new_ids
             # 추가 VOD 정보 가져오기
-            recents = SupportWavve.get_more_vod_contents(recents, new_ids, self.web_list_model, recent_days)
+            recents = SupportWavve.get_more_new_vods(recents, new_ids, self.web_list_model, recent_days)
             P.logger.debug(f'Total recent contents on page {i}: {len(recents)}')
             recent_vods.extend(recents)
         return recent_vods
