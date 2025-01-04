@@ -131,7 +131,7 @@ class REDownloader(WVDownloader):
     def parse_re_stdout(self, process: subprocess.Popen) -> None:
         for line in iter(process.stdout.readline, b''):
             try:
-                if self._stop_flag:
+                if getattr(self, '_stop_flag', self._WVDownloader__stop_flag):
                     self.logger.debug(f'Stop downloading...')
                     process.terminate()
                     return False
