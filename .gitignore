@@ -2,3 +2,5 @@
 *.pyc
 __pycache__/
 **/Logs
+mp4decrypt*
+mkvmerge.exe

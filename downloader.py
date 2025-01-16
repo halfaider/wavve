@@ -7,13 +7,15 @@ import datetime
 import stat
 import functools
 from io import BytesIO
+import re
+import logging
 
 import requests
 import webvtt
 
 from wv_tool import WVDownloader
 from wv_tool.lib.mpegdash.parser import MPEGDASHParser
-from wv_tool.tool import MP4DECRYPT
+from wv_tool.tool import MP4DECRYPT, MKVMERGE
 from .setup import P, F
 
 
@@ -25,12 +27,18 @@ RE_EXECUTE = BIN_DIR / 'N_m3u8DL-RE'
 if RE_EXECUTE.exists():
     mode = RE_EXECUTE.stat().st_mode
     RE_EXECUTE.chmod(mode | stat.S_IEXEC)
-# Windows에서 muxer의 bin_path 지정이 잘 안돼서 동일 경로에 저장
 if platform.system() == 'Windows':
     RE_EXECUTE = RE_EXECUTE.with_name('N_m3u8DL-RE.exe')
     FFMPEG = BIN_DIR / 'ffmpeg.exe'
+    MP4DECRYPT_ = BIN_DIR / 'mp4decrypt.exe'
+    MKVMERGE_ = BIN_DIR / 'mkvmerge.exe'
+    if not MKVMERGE_.exists():
+        MKVMERGE_.symlink_to(MKVMERGE)
 else:
     FFMPEG = '/usr/bin/ffmpeg'
+    MP4DECRYPT_ = BIN_DIR / 'mp4decrypt'
+if not MP4DECRYPT_.exists():
+    MP4DECRYPT_.symlink_to(MP4DECRYPT)
 
 
 class REDownloader(WVDownloader):
@@ -79,20 +87,23 @@ class REDownloader(WVDownloader):
                 # 웨이브는 특정 CDN에서 invalid XML로 응답함
                 mpd_file = output_filepath.with_suffix('.mpd')
                 MPEGDASHParser.write(self.mpd, str(mpd_file))
-                # 실시간 decrypt 시 shaka-packager를 권장하나 윈도우에서 오작동
+                '''
+                실시간 decrypt 시 shaka-packager를 권장하나 윈도우에서 오작동
+                Windows에서 mkvmerge.exe의 bin_path 지정이 제대로 동작하지 않아 RE와 동일 경로에 있어야 함
+                '''
                 command.extend([
                     str(mpd_file), '--base-url', self.mpd_base_url,
                     '--decryption-binary-path', MP4DECRYPT, '--mp4-real-time-decryption',
-                    '--mux-after-done', f'format=mkv:muxer=mkvmerge',
+                    '--mux-after-done', 'format=mkv:muxer=mkvmerge',
                 ])
+                # --key를 입력하면 --decryption-binary-path 지정이 제대로 동작하지 않아 RE와 동일 경로에 mp4decrypt가 있어야 함
                 for key in self.key:
                     command.extend(['--key', f'{key["kid"]}:{key["key"]}'])
             case 'download_m3u8':
                 command.extend([self.mpd_url])
         command.extend([
-            '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem,
-            '--auto-select', '--concurrent-download', '--log-level', 'INFO', '--no-log', '--write-meta-json', 'False',
-            '--ffmpeg-binary-path', str(FFMPEG),
+            '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem, '--ffmpeg-binary-path', str(FFMPEG),
+            '--auto-select', '--concurrent-download', '--log-level', 'INFO', '--no-log', '--write-meta-json', 'False', '--no-ansi-color',
         ])
         for k, v in self.mpd_headers.items():
             command.extend(['-H', f'{k}: {v}'])
@@ -128,6 +139,13 @@ class REDownloader(WVDownloader):
             self.logger.warning(f'Process exit code: {process.returncode}')
             return False
 
+
+    RE_LOGGING_LEVEL = {
+        'WARN': logging.WARNING,
+        'INFO': logging.INFO,
+        'ERROR': logging.ERROR,
+        'DEBUG': logging.DEBUG,
+    }
     def parse_re_stdout(self, process: subprocess.Popen) -> None:
         for line in iter(process.stdout.readline, b''):
             try:
@@ -141,7 +159,11 @@ class REDownloader(WVDownloader):
                     msg = line.decode('cp949').strip()
                 if not msg:
                     continue
-                self.logger.debug(msg)
+                match = re.compile('^\d{2}:\d{2}:\d{2}\.\d{3}\s(\w+)\s?:\s(.+)$').search(msg)
+                if match:
+                    level = match.group(1)
+                    message = match.group(2)
+                    self.logger.log(self.RE_LOGGING_LEVEL.get(level, 'DEBUG'), message)
             except:
                 self.logger.error(traceback.format_exc())
 
