@@ -109,6 +109,19 @@ $("body").on('click', '#whitelist_genres_btn', function(e){
   e.preventDefault();
   add_condition('recent_whitelist_genres', $(this).data('programgenre'))
 });
+$("body").on('click', '#retrieve_btn', function(e){
+  e.preventDefault();
+  globalSendCommand('retrieve', $(this).data('id'));
+});
+$("body").on('click', '#delete_btn', function(e){
+  e.preventDefault();
+  db_id = $(this).data('id');
+  globalConfirmModal('삭제하시겠습니까?', 'ID: ' + db_id, function() {
+    globalSendCommand('delete', db_id);
+    tmp = last_list_option.split('|');
+    globalRequestSearch(tmp[1]);
+  });
+});
 ///////////////////////
 
 
@@ -181,6 +194,7 @@ function make_list(ret) {
         case 18: tmp += '패스 - 프리뷰'; break;
         case 21: tmp += 'many retry'; break;
         case 33: tmp += '데이터 갱신 실패'; break;
+        case 34: tmp += '다운로드 오류'; break;
         default: tmp += '다운로드중'; break;
       }
       tmp += '</span>';
@@ -204,11 +218,13 @@ function make_list(ret) {
     tmp2 += j_button('program_search_on_program_btn', '프로그램 검색', {'code':data[i].programid});
     tmp2 += j_button('json_btn', 'JSON', {'idx':i});
     tmp2 += j_button('program_search_btn', '목록 검색', {'program':data[i].programtitle});
-    tmp2 += j_button('except_channel_btn', '제외채널', {'channel':data[i].channelname});
-    tmp2 += j_button('except_program_btn', '제외프로그램', {'program':data[i].programtitle});
-    tmp2 += j_button('except_genres_btn', '제외장르', {'programgenre':data[i].programgenre});
-    tmp2 += j_button('whitelist_program_btn', '포함프로그램', {'program':data[i].programtitle});
-    tmp2 += j_button('whitelist_genres_btn', '포함장르', {'programgenre':data[i].programgenre});
+    tmp2 += j_button('except_channel_btn', '제외채널', {'channel':data[i].channelname}, 'warning');
+    tmp2 += j_button('except_program_btn', '제외프로그램', {'program':data[i].programtitle}, 'warning');
+    tmp2 += j_button('except_genres_btn', '제외장르', {'programgenre':data[i].programgenre}, 'warning');
+    tmp2 += j_button('whitelist_program_btn', '포함프로그램', {'program':data[i].programtitle}, 'success');
+    tmp2 += j_button('whitelist_genres_btn', '포함장르', {'programgenre':data[i].programgenre}, 'success');
+    tmp2 += j_button('retrieve_btn', '갱신', {'id':data[i].id}, 'info');
+    tmp2 += j_button('delete_btn', '삭제', {'id':data[i].id}, 'danger');
     tmp += j_button_group(tmp2)
     str += j_col(9, tmp)
     str += j_row_end();

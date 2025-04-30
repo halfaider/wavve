@@ -54,7 +54,7 @@ class ModuleRecent(PluginModuleBase):
             f"{self.name}_auto_db_clear": "False",
             f"{self.name}_auto_db_days": "7",
             f"{self.name}_search_genres": "드라마,예능,시사,교양,해외시리즈,애니메이션,스포츠,키즈,시사교양",
-            f"{self.name}_search_days": "15",
+            f"{self.name}_search_days": "2",
             f"{self.name}_except_genres": "",
             f"{self.name}_whitelist_genres": "",
             f"{self.name}_drm": "WV",
@@ -95,9 +95,42 @@ class ModuleRecent(PluginModuleBase):
                     vod.pf_abort = False
                     vod.etc_abort = 0
                     vod.save()
+            case 'retrieve':
+                vod = ModelWavveRecent.get_by_id(arg1)
+                try:
+                    self.retrieve_recent_vod(vod, self.retrieve_settings)
+                    ret['msg'] = "갱신이 완료되었습니다."
+                    vod.etc_abort = 0
+                except Exception as e:
+                    P.logger.exception(repr(e))
+                    vod.retry += 1
+                    ret['msg'] = f"갱신하지 못 했습니다: {e}"
+                    ret['ret'] = 'warning'
+                finally:
+                    vod.save()
+            case 'delete':
+                try:
+                    result = ModelWavveRecent.delete_by_id(arg1)
+                    if result:
+                        ret['msg'] = "삭제되었습니다."
+                    else:
+                        ret['msg'] = "삭제하지 못 했습니다."
+                        ret['ret'] = 'warning'
+                except Exception as e:
+                    P.logger.exception(repr(e))
+                    ret['msg'] = f"삭제할 수 없습니다: {e}"
+                    ret['ret'] = 'warning'
         return flask.jsonify(ret)
 
     def get_recent_vods(self) -> list[dict]:
+        search_genres = P.ModelSetting.get_list(f'{self.name}_search_genres', delimeter=',')
+        search_days = P.ModelSetting.get_int(f'{self.name}_search_days')
+        recents, additional_ids = SupportWavve.get_new_vods(days=search_days, genres=search_genres)
+        recents = SupportWavve.get_more_new_vods(recents, additional_ids, self.web_list_model, search_days)
+        return recents
+    
+    """
+    def get_recent_vods_(self) -> list[dict]:
         page = P.ModelSetting.get_int(f"{self.name}_page_count")
         search_genres = P.ModelSetting.get_list(f'{self.name}_search_genres', delimeter=',')
         recent_days = P.ModelSetting.get_int(f'{self.name}_search_days')
@@ -123,6 +156,7 @@ class ModuleRecent(PluginModuleBase):
             P.logger.debug(f'Total recent contents on page {i}: {len(recents)}')
             recent_vods.extend(recents)
         return recent_vods
+    """
 
     def save_recent_vod(self, recent_vod: dict) -> 'ModelWavveRecent':
         vod = ModelWavveRecent.get_episode_by_recent(recent_vod['contentid'])
@@ -328,6 +362,7 @@ class ModuleRecent(PluginModuleBase):
                 self.retrieve_recent_vod(vod, settings)
             except:
                 P.logger.error(traceback.format_exc())
+                vod.retry += 1
             finally:
                 vod.save()
 
@@ -353,8 +388,11 @@ class ModuleRecent(PluginModuleBase):
         # JSON 데이터 갱신 실패 재시도
         P.logger.debug(f'Retry vods failed while retrieving...')
         for vod in ModelWavveRecent.get_episodes_by_etc_abort(33):
-            vod.etc_abort = 0
-            vod.save()
+            if vod.retry < 2:
+                vod.etc_abort = 0
+                vod.save()
+            else:
+                P.logger.debug(f'Retry limit exceeded: {vod.programtitle} [{vod.episodenumber}] {vod.contentid}')
         # JSON 새로고침
         P.logger.debug(f'Retrieving vods...')
         self.retrieve_recent_vods(ModelWavveRecent.get_episodes_by_etc_abort(0))
@@ -374,11 +412,32 @@ class ModuleRecent(PluginModuleBase):
                 try:
                     # 다운로드 준비
                     P.logger.debug(f'Prepare downloading vod: {vod.contentid}')
-                    vod.retry += 1
+                    if vod.retry > 3:
+                        vod.etc_abort = 34
+                        P.logger.warning(f'Too many download retries: {vod.contentid}')
+                        continue
+                    issue = vod.streaming_json.get('issue')
+                    issue_date = None
+                    for date_format in ('%Y-%m-%d %H:%M:%S%z', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d'):
+                        try:
+                            issue_date = datetime.datetime.strptime(issue, date_format)
+                            break
+                        except:
+                            pass
+                    if issue_date:
+                        now = datetime.datetime.now(datetime.timezone.utc)
+                        elapsed = now - issue_date.astimezone(datetime.timezone.utc)
+                        if elapsed.total_seconds() > 60 * 5:
+                            P.logger.warning(f'The play URL may have expired: {vod.contentid} elapsed={elapsed.total_seconds()}')
+                            self.retrieve_recent_vod(vod, self.retrieve_settings)
+                    else:
+                        P.logger.warning(f'Unknown date format: {issue}')
                     vod.pf = 0
                     vod.save_path = save_path
                     vod.start_time = datetime.datetime.now()
                     vod.etc_abort = 31
+                    # start_time 저장
+                    vod.save()
                     callback_id = f'{P.package_name}_{self.name}_{vod.id}'
                     if vod.drm:
                         params = {
@@ -401,7 +460,7 @@ class ModuleRecent(PluginModuleBase):
                         match P.ModelSetting.get(f'{self.name}_hls'):
                             case 'RE':
                                 if vod.streaming_json.get('authtype') == 'cookie':
-                                    headers['Cookie'] = vod.streaming_json.get('awscookie', '')
+                                    headers['Cookie'] = vod.streaming_json.get('awscookie') or ''
                                 downloader = REDownloader({
                                     'callback_id': callback_id,
                                     'logger': P.logger,
@@ -431,7 +490,7 @@ class ModuleRecent(PluginModuleBase):
                                 )
                     # 자막 다운로드
                     download_webvtts(
-                        vod.streaming_json.get('subtitles', []),
+                        vod.streaming_json.get('subtitles') or [],
                         f"{save_path}/{vod.filename}",
                         P.ModelSetting.get_list(f'{self.name}_subtitle_langs', delimeter=',')
                     )
@@ -448,6 +507,7 @@ class ModuleRecent(PluginModuleBase):
                 except:
                     P.logger.error(traceback.format_exc())
                     P.logger.error(f'Failed while downloading: {vod.contentid}')
+                    vod.retry += 1
                     vod.etc_abort = 0
                 finally:
                     vod.save()
@@ -575,6 +635,10 @@ class ModuleRecent(PluginModuleBase):
                 db_item.save()
             case "DOWNLOADING":
                 is_last = False
+            case "ERROR":
+                db_item.completed = False
+                db_item.etc_abort = 34
+                db_item.save()
 
         if is_last:
             self.current_download_count -= 1
@@ -648,6 +712,7 @@ class ModelWavveRecent(ModelBase):
     31: 다운로드 중
     32: 다운로드 완료
     33: 데이터 갱신 실패
+    34: 다운로드 오류
     '''
     etc_abort = F.db.Column(F.db.Integer) # ffmpeg 원인 1, 채널, 프로그램
     ffmpeg_status = F.db.Column(F.db.Integer)
@@ -677,7 +742,7 @@ class ModelWavveRecent(ModelBase):
 
     def set_contents_json(self, contents_json: dict) -> None:
         self.contents_json = contents_json
-        self.programgenre = contents_json.get('genretext', '일반')
+        self.programgenre = contents_json.get('genretext') or '일반'
         self.drm = True if self.contents_json['drms'] else False
 
     def set_info(self, data: dict) -> None:

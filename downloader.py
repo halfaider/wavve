@@ -9,6 +9,8 @@ import functools
 from io import BytesIO
 import re
 import logging
+import os
+from urllib.parse import urlparse
 
 import requests
 import webvtt
@@ -71,10 +73,41 @@ class REDownloader(WVDownloader):
 
     def download(self) -> bool:
         '''override'''
-        result = super().download()
-        self.end_time = datetime.datetime.now()
-        self.download_time = self.end_time - self.start_time
-        return result
+        try:
+            mpd_url = urlparse(self.mpd_url)
+            self.mpd_headers['Host'] = mpd_url.netloc
+            self.start_time = datetime.datetime.now()
+            self.set_status("READY")
+            output = pathlib.Path(self.output_filepath)
+            if output.exists():
+                self.logger.debug(f"{self.output_filepath} FILE EXIST")
+                self.set_status("EXIST_OUTPUT_FILEPATH")
+                return False
+            pathlib.Path(self.temp_dir).mkdir(parents=True, exist_ok=True)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            self.prepare()
+            self.set_status("DOWNLOADING")
+            if self.streaming_protocol == 'hls':
+                result = self.download_m3u8()
+            elif self.streaming_protocol == 'dash':
+                if not self.mpd:
+                    self.get_mpd()
+                if self.mpd:
+                    self.analysis_mpd()
+                self.make_download_info()
+                result = self.download_mpd()
+            if result and (self.config.get('clean') or True):
+                self.clean()
+            if self._WVDownloader__stop_flag:
+                self.set_status("USER_STOP")
+            elif result and self.status == "DOWNLOADING":
+                self.set_status("COMPLETED")
+            else:
+                self.set_status("ERROR")
+            return result
+        except Exception as e:
+            self.logger.exception(repr(e))
+        return False
 
     def get_command(self, what_for: str = 'download_m3u8') -> list:
         output_filepath = pathlib.Path(self.output_filepath)
@@ -103,7 +136,7 @@ class REDownloader(WVDownloader):
                 command.extend([self.mpd_url])
         command.extend([
             '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem, '--ffmpeg-binary-path', str(FFMPEG),
-            '--auto-select', '--concurrent-download', '--log-level', 'INFO', '--no-log', '--write-meta-json', 'False', '--no-ansi-color',
+            '--auto-select', '--concurrent-download', '--log-level', 'INFO', '--no-log', '--write-meta-json', 'False', '--no-ansi-color', '--download-retry-count', '3'
         ])
         for k, v in self.mpd_headers.items():
             command.extend(['-H', f'{k}: {v}'])
