@@ -23,6 +23,9 @@
           <option value="etc_abort_14">화이트리스트 제외</option>
           <option value="etc_abort_15">에피소드 제외</option>
           <option value="etc_abort_5">2160p 대기</option>
+          <option value="etc_abort_33">갱신 실패</option>
+          <option value="etc_abort_34">다운로드 오류</option>
+          <option value="etc_abort_9">너무 많은 시도</option>
         </select>
       </span>
       <span class="col-md-8">
@@ -122,6 +125,15 @@ $("body").on('click', '#delete_btn', function(e){
     globalRequestSearch(tmp[1]);
   });
 });
+$("body").on('click', '#reset_status_btn', function(e){
+  e.preventDefault();
+  db_id = $(this).data('id');
+  globalConfirmModal('초기화하시겠습니까?', 'ID: ' + db_id, function() {
+    globalSendCommand('reset_status', db_id);
+    tmp = last_list_option.split('|');
+    globalRequestSearch(tmp[1]);
+  });
+});
 ///////////////////////
 
 
@@ -183,7 +195,7 @@ function make_list(ret) {
         case 6: tmp += '화질 없음'; break;
         case 7: tmp += '권한 없음'; break;
         case 8: tmp += '퀵VOD 방송중'; break;
-        case 9: tmp += '너무 많은 시도 (20)'; break;
+        case 9: tmp += '너무 많은 시도'; break;
         case 11: tmp += '패스 - QVOD'; break;
         case 12: tmp += '패스 - 제외 채널'; break;
         case 13: tmp += '패스 - 제외 프로그램'; break;
@@ -199,6 +211,8 @@ function make_list(ret) {
       }
       tmp += '</span>';
     }
+    tmp += '<br>';
+    tmp += '<strong>재시도</strong> : ' + data[i].retry;
     tmp += '<br>';
     if (data[i].duration != null) {
       tmp += '<strong>길이</strong> : ' + duration_str(data[i].duration) + '&nbsp;&nbsp;';
@@ -224,6 +238,7 @@ function make_list(ret) {
     tmp2 += j_button('whitelist_program_btn', '포함프로그램', {'program':data[i].programtitle}, 'success');
     tmp2 += j_button('whitelist_genres_btn', '포함장르', {'programgenre':data[i].programgenre}, 'success');
     tmp2 += j_button('retrieve_btn', '갱신', {'id':data[i].id}, 'info');
+    tmp2 += j_button('reset_status_btn', '초기화', {'id':data[i].id}, 'warning');
     tmp2 += j_button('delete_btn', '삭제', {'id':data[i].id}, 'danger');
     tmp += j_button_group(tmp2)
     str += j_col(9, tmp)

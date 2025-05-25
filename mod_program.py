@@ -314,6 +314,10 @@ class ModuleProgram(PluginModuleBase):
                 is_last = False
                 db_item.is_downloading = True
                 db_item.ffmpeg_status_kor = "DRM 다운로드중"
+            case "ERROR":
+                db_item.completed = False
+                db_item.etc_abort = 34
+                db_item.save()
 
         if is_last:
             self.current_ffmpeg_count += -1

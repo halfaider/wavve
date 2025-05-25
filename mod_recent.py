@@ -60,6 +60,7 @@ class ModuleRecent(PluginModuleBase):
             f"{self.name}_drm": "WV",
             f"{self.name}_subtitle_langs": "all",
             f"{self.name}_hls": "WV",
+            f"{self.name}_max_retry": "20",
         }
         self.web_list_model = ModelWavveRecent
         self.current_download_count = 0
@@ -120,6 +121,17 @@ class ModuleRecent(PluginModuleBase):
                     P.logger.exception(repr(e))
                     ret['msg'] = f"삭제할 수 없습니다: {e}"
                     ret['ret'] = 'warning'
+            case 'reset_status':
+                vod = ModelWavveRecent.get_by_id(arg1)
+                vod.completed = False
+                vod.user_abort = False
+                vod.pf_abort = False
+                vod.etc_abort = 0
+                vod.ffmpeg_status = -1
+                vod.pf = 0
+                vod.retry = 0
+                vod.save()
+                ret['msg'] = "초기화 했습니다."
         return flask.jsonify(ret)
 
     def get_recent_vods(self) -> list[dict]:
@@ -128,35 +140,6 @@ class ModuleRecent(PluginModuleBase):
         recents, additional_ids = SupportWavve.get_new_vods(days=search_days, genres=search_genres)
         recents = SupportWavve.get_more_new_vods(recents, additional_ids, self.web_list_model, search_days)
         return recents
-    
-    """
-    def get_recent_vods_(self) -> list[dict]:
-        page = P.ModelSetting.get_int(f"{self.name}_page_count")
-        search_genres = P.ModelSetting.get_list(f'{self.name}_search_genres', delimeter=',')
-        recent_days = P.ModelSetting.get_int(f'{self.name}_search_days')
-        collected_ids = set()
-        new_ids = set()
-        recent_vods = []
-        for i in range(page + 1, 0, -1):
-            P.logger.debug(f'Current page: {i}')
-            # 기존의 SupportWavve.vod_newcontents() 에서 수집한 목록
-            recents = SupportWavve.vod_newcontents(page=i).get('list', [])
-            recent_ids = {epi['contentid'] for epi in recents}
-            # 새로운 API 에서 수집한 id 목록
-            new_ids.update(SupportWavve.get_new_vod_ids(i))
-            # 키워드 검색으로 수집한 id 목록
-            for keyword in search_genres:
-                P.logger.debug(f'Searching: {keyword}')
-                new_ids.update(SupportWavve.search_new_vod_ids(keyword, page))
-            # 중복 제거 및 목록 통합
-            new_ids -= collected_ids - recent_ids
-            collected_ids |= recent_ids | new_ids
-            # 추가 VOD 정보 가져오기
-            recents = SupportWavve.get_more_new_vods(recents, new_ids, self.web_list_model, recent_days)
-            P.logger.debug(f'Total recent contents on page {i}: {len(recents)}')
-            recent_vods.extend(recents)
-        return recent_vods
-    """
 
     def save_recent_vod(self, recent_vod: dict) -> 'ModelWavveRecent':
         vod = ModelWavveRecent.get_episode_by_recent(recent_vod['contentid'])
@@ -176,7 +159,7 @@ class ModuleRecent(PluginModuleBase):
         if vod.completed:
             vod.etc_abort = 32
             return
-        if vod.retry > 20:
+        if vod.retry >= P.ModelSetting.get_int(f"{self.name}_max_retry"):
             P.logger.warning(f'Too many retires: {vod.contentid}')
             vod.etc_abort = 9
             return
@@ -334,6 +317,7 @@ class ModuleRecent(PluginModuleBase):
         if not contents_json:
             P.logger.warning(f'Skipped - no content details: {vod.contentid}')
             vod.etc_abort = 33
+            vod.retry += 1
             return
         vod.set_contents_json(contents_json)
         action = 'dash' if contents_json.get('drms') else 'hls'
@@ -341,6 +325,7 @@ class ModuleRecent(PluginModuleBase):
         if not streaming_data:
             P.logger.warning(f'Skipped - no streaming data: {vod.contentid}')
             vod.etc_abort = 33
+            vod.retry += 1
             return
         vod.set_streaming(streaming_data)
         if 'preview' in streaming_data['playurl']:
@@ -388,7 +373,7 @@ class ModuleRecent(PluginModuleBase):
         # JSON 데이터 갱신 실패 재시도
         P.logger.debug(f'Retry vods failed while retrieving...')
         for vod in ModelWavveRecent.get_episodes_by_etc_abort(33):
-            if vod.retry < 2:
+            if vod.retry < P.ModelSetting.get_int(f"{self.name}_max_retry"):
                 vod.etc_abort = 0
                 vod.save()
             else:
@@ -412,26 +397,14 @@ class ModuleRecent(PluginModuleBase):
                 try:
                     # 다운로드 준비
                     P.logger.debug(f'Prepare downloading vod: {vod.contentid}')
-                    if vod.retry > 3:
-                        vod.etc_abort = 34
-                        P.logger.warning(f'Too many download retries: {vod.contentid}')
+                    if vod.retry >= P.ModelSetting.get_int(f"{self.name}_max_retry"):
+                        P.logger.warning(f'Too many retries: {vod.contentid}')
                         continue
-                    issue = vod.streaming_json.get('issue')
-                    issue_date = None
-                    for date_format in ('%Y-%m-%d %H:%M:%S%z', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d'):
-                        try:
-                            issue_date = datetime.datetime.strptime(issue, date_format)
-                            break
-                        except:
-                            pass
-                    if issue_date:
-                        now = datetime.datetime.now(datetime.timezone.utc)
-                        elapsed = now - issue_date.astimezone(datetime.timezone.utc)
-                        if elapsed.total_seconds() > 60 * 5:
-                            P.logger.warning(f'The play URL may have expired: {vod.contentid} elapsed={elapsed.total_seconds()}')
-                            self.retrieve_recent_vod(vod, self.retrieve_settings)
-                    else:
-                        P.logger.warning(f'Unknown date format: {issue}')
+
+                    if SupportWavve.is_expired(vod.playurl, vod.streaming_json.get('issue')):
+                        P.logger.warning(f'The play URL may have expired, retrieve it: {vod.contentid}')
+                        self.retrieve_recent_vod(vod, self.retrieve_settings)
+
                     vod.pf = 0
                     vod.save_path = save_path
                     vod.start_time = datetime.datetime.now()
@@ -814,19 +787,13 @@ class ModelWavveRecent(ModelBase):
                     query = query.filter_by(pf_abort=True)
                 case 'etc_abort_under_10':
                     query = query.filter(cls.etc_abort < 10, cls.etc_abort > 0)
-                case 'etc_abort_11':
-                    query = query.filter_by(etc_abort='11')
-                case 'etc_abort_12':
-                    query = query.filter_by(etc_abort='12')
-                case 'etc_abort_13':
-                    query = query.filter_by(etc_abort='13')
-                case 'etc_abort_14':
-                    query = query.filter_by(etc_abort='14')
                 case 'etc_abort_15':
                     #query = query.filter_by(etc_abort='15')
                     query = query.filter(or_(cls.etc_abort=='15', cls.etc_abort=='16'))
-                case 'etc_abort_5':
-                    query = query.filter_by(etc_abort='5')
+                case _:
+                    etc_abort = option1.replace('etc_abort_', '')
+                    if etc_abort.isdigit():
+                        query = query.filter_by(etc_abort=etc_abort)
 
             if order == 'desc':
                 query = query.order_by(desc(cls.id))

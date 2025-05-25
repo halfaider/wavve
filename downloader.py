@@ -1,16 +1,15 @@
-import platform
+import re
+import stat
+import logging
 import pathlib
+import datetime
+import platform
+import functools
 import traceback
 import subprocess
 import urllib.parse
-import datetime
-import stat
-import functools
+
 from io import BytesIO
-import re
-import logging
-import os
-from urllib.parse import urlparse
 
 import requests
 import webvtt
@@ -74,7 +73,7 @@ class REDownloader(WVDownloader):
     def download(self) -> bool:
         '''override'''
         try:
-            mpd_url = urlparse(self.mpd_url)
+            mpd_url = urllib.parse.urlparse(self.mpd_url)
             self.mpd_headers['Host'] = mpd_url.netloc
             self.start_time = datetime.datetime.now()
             self.set_status("READY")
