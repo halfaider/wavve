@@ -74,7 +74,7 @@ function make_program_page(ret) {
   str += '<hr>';
   for (i in data) {
     str += j_row_start();
-    tmp = '<img src="http://' + data[i].image + '" class="img-fluid">';
+    tmp = `<img src="${(data[i].image.startsWith('http') ? '' : '//')}${data[i].image}" class="img-fluid">`;
     str += j_col(3, tmp);
     tmp = '<strong>' + data[i].programtitle+' ' + data[i].episodenumber + '회</strong><br>';
     tmp += data[i].episodetitle + '<br>';

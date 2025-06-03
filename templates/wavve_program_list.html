@@ -109,8 +109,8 @@ const make_list = (data) => {
     if(data[i].programimage == null || data[i].programimage == undefined || data[i].programimage.length <= 0){
       tmp = ''
     }else{
-      tmp = `<div><img src="http://${data[i].programimage}" class="img-fluid thumbnail head_pic" >
-             <img src="http://${data[i].thumbnail}" class="img-fluid thumbnail before"></div>`
+      tmp = `<div><img src="${(data[i].programimage.startsWith('http') ? '' : '//')}${data[i].programimage}" class="img-fluid thumbnail head_pic" >
+             <img src="${(data[i].thumbnail.startsWith('http') ? '' : '//')}${data[i].thumbnail}" class="img-fluid thumbnail before"></div>`
     }
     str += j_col(3, tmp);
 

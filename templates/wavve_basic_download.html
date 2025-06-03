@@ -96,7 +96,7 @@ function make_program_page(ret) {
   str = '<hr>';
   for (i in data) {
     str += j_row_start();
-    tmp = '<img src="http://' + data[i].image + '" class="img-fluid">'
+    tmp = `<img src="${(data[i].image.startsWith('http') ? '' : '//')}${data[i].image}" class="img-fluid">`
     str += j_col(3, tmp)
     tmp = '<strong>' + data[i].programtitle+' ' + data[i].episodenumber + '회</strong><br>';
     tmp += data[i].episodetitle + '<br>';
@@ -136,7 +136,7 @@ function make_analyse_result(data) {
     });
   } else if (data['url_type'] == 'episode') {
     str = j_row_start();
-    tmp = '<img src="http://' + data.episode.image + '" class="img-fluid">'
+    tmp = `<img src="${(data.episode.image.startsWith('http') ? '' : '//')}${data.episode.image}" class="img-fluid">`
     str += j_col(3, tmp)
     tmp = '<strong>' + data.episode.programtitle+' ' + data.episode.episodenumber + '회</strong><br>';
     tmp += data.episode.episodetitle + '<br>';
