@@ -15,7 +15,7 @@ from plugin.create_plugin import PluginBase
 from plugin.logic_module_base import PluginModuleBase
 from plugin.model_base import ModelBase
 from support.expand.ffmpeg import SupportFfmpeg
-from support_site import SupportWavve
+from support_site import SupportWavve, SiteUtil
 from wv_tool import WVDownloader
 
 from .setup import F, P
@@ -727,7 +727,7 @@ class ModelWavveRecent(ModelBase):
         self.releasedate = data['releasedate']
         self.episodenumber = data['episodenumber']
         self.episodetitle = data['episodetitle']
-        self.image = 'https://' + data['image']
+        self.image = SiteUtil.normalize_url(data['image'])
         self.vod_type = data['type']
         self.content_type = 'onairvod' if data['type'] == 'onair' else 'vod'
 
