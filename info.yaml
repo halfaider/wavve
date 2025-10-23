@@ -1,12 +1,11 @@
 title: "웨이브"
-version: "1.1.12"
+version: "1.1.13"
 package_name: "wavve"
 developer: "halfaider"
 description: "웨이브 VOD 다운로더"
 home: "https://github.com/halfaider/wavve"
 
 require_plugin:
-  - "https://github.com/soju6jan/sjva"
   - "https://github.com/flaskfarm/support_site"
   - "https://github.com/flaskfarm/ffmpeg"
   - "https://github.com/soju6jan/wv_tool"

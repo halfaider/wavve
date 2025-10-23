@@ -1,22 +1,23 @@
+import os
 import re
 import stat
+import shutil
 import logging
 import pathlib
 import datetime
 import platform
 import functools
-import traceback
 import subprocess
 import urllib.parse
 
 from io import BytesIO
 
-import requests
 import webvtt
 
 from wv_tool import WVDownloader
 from wv_tool.lib.mpegdash.parser import MPEGDASHParser
 from wv_tool.tool import MP4DECRYPT, MKVMERGE
+from support_site import SupportWavve
 from .setup import P, F
 
 
@@ -36,9 +37,10 @@ if platform.system() == 'Windows':
     if not MKVMERGE_.exists():
         MKVMERGE_.symlink_to(MKVMERGE)
 else:
-    FFMPEG = '/usr/bin/ffmpeg'
+    FFMPEG = pathlib.Path('/usr/bin/ffmpeg')
     MP4DECRYPT_ = BIN_DIR / 'mp4decrypt'
 if not MP4DECRYPT_.exists():
+    MP4DECRYPT_.unlink(missing_ok=True)
     MP4DECRYPT_.symlink_to(MP4DECRYPT)
 
 
@@ -52,8 +54,8 @@ class REDownloader(WVDownloader):
                     return False
                 command = self.get_command(func.__name__)
                 return self.execute_command(command)
-            except Exception:
-                self.logger.error(traceback.format_exc())
+            except Exception as e:
+                self.logger.exception(str(e))
             finally:
                 func(self, *args, **kwds)
             return False
@@ -113,6 +115,10 @@ class REDownloader(WVDownloader):
         plugin_ffmpeg = F.PluginManager.get_plugin_instance('ffmpeg')
         if plugin_ffmpeg:
             FFMPEG = pathlib.Path(plugin_ffmpeg.ModelSetting.get('ffmpeg_path'))
+        if which_path := shutil.which(str(FFMPEG), mode=os.F_OK | os.X_OK, path=None):
+            FFMPEG = pathlib.Path(which_path)
+        else:
+            raise Exception(f"Could not execute FFmpeg: {str(FFMPEG)}")
         command = [str(RE_EXECUTE)]
         match what_for:
             case 'download_mpd':
@@ -123,22 +129,31 @@ class REDownloader(WVDownloader):
                 실시간 decrypt 시 shaka-packager를 권장하나 윈도우에서 오작동
                 Windows에서 mkvmerge.exe의 bin_path 지정이 제대로 동작하지 않아 RE와 동일 경로에 있어야 함
                 '''
-                command.extend([
-                    str(mpd_file), '--base-url', self.mpd_base_url,
-                    '--decryption-binary-path', MP4DECRYPT, '--mp4-real-time-decryption',
-                    '--mux-after-done', 'format=mkv:muxer=mkvmerge',
-                ])
+                command.extend((str(mpd_file), '--base-url', self.mpd_base_url))
                 # --key를 입력하면 --decryption-binary-path 지정이 제대로 동작하지 않아 RE와 동일 경로에 mp4decrypt가 있어야 함
                 for key in self.key:
-                    command.extend(['--key', f'{key["kid"]}:{key["key"]}'])
+                    command.extend(('--key', f'{key["kid"]}:{key["key"]}'))
             case 'download_m3u8':
-                command.extend([self.mpd_url])
-        command.extend([
-            '--tmp-dir', self.temp_dir, '--save-dir', self.output_dir, '--save-name', output_filepath.stem, '--ffmpeg-binary-path', str(FFMPEG),
-            '--auto-select', '--concurrent-download', '--log-level', 'INFO', '--no-log', '--write-meta-json', 'False', '--no-ansi-color', '--download-retry-count', '3'
-        ])
+                command.append(self.mpd_url)
+        if output_filepath.suffix == '.mkv':
+            command.extend(('--mux-after-done', 'format=mkv:muxer=mkvmerge'))
+        command.extend((
+            '--tmp-dir', self.temp_dir,
+            '--save-dir', self.output_dir,
+            '--save-name', output_filepath.stem,
+            '--ffmpeg-binary-path', str(FFMPEG),
+            '--decryption-binary-path', MP4DECRYPT,
+            '--write-meta-json', 'False',
+            '--download-retry-count', '3',
+            '--log-level', 'INFO',
+            '--mp4-real-time-decryption',
+            '--auto-select',
+            '--concurrent-download',
+            '--no-log',
+            '--no-ansi-color',
+        ))
         for k, v in self.mpd_headers.items():
-            command.extend(['-H', f'{k}: {v}'])
+            command.extend(('-H', f'{k}: {v}'))
         return command
 
     def check_file_path(self) -> bool:
@@ -157,12 +172,12 @@ class REDownloader(WVDownloader):
             return True
 
     def execute_command(self, command: list) -> bool:
-        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf8', errors='ignore')
         self.parse_re_stdout(process)
         try:
             process.wait(timeout=3600)
-        except:
-            self.logger.error(traceback.format_exc())
+        except Exception:
+            self.logger.exception(command)
             process.kill()
             return False
         if process.returncode == 0:
@@ -179,25 +194,21 @@ class REDownloader(WVDownloader):
         'DEBUG': logging.DEBUG,
     }
     def parse_re_stdout(self, process: subprocess.Popen) -> None:
-        for line in iter(process.stdout.readline, b''):
+        for line in iter(process.stdout.readline, ''):
             try:
                 if getattr(self, '_stop_flag', self._WVDownloader__stop_flag):
                     self.logger.debug(f'Stop downloading...')
                     process.terminate()
                     return False
-                try:
-                    msg = line.decode('utf-8').strip()
-                except UnicodeDecodeError:
-                    msg = line.decode('cp949').strip()
-                if not msg:
+                if not (msg := line.strip()):
                     continue
                 match = re.compile('^\d{2}:\d{2}:\d{2}\.\d{3}\s(\w+)\s?:\s(.+)$').search(msg)
                 if match:
                     level = match.group(1)
                     message = match.group(2)
                     self.logger.log(self.RE_LOGGING_LEVEL.get(level, 'DEBUG'), message)
-            except:
-                self.logger.error(traceback.format_exc())
+            except Exception:
+                self.logger.error(line)
 
 
 def download_webvtts(subtitles: list, video_file_path: str, wanted: list) -> None:
@@ -213,22 +224,14 @@ def download_webvtts(subtitles: list, video_file_path: str, wanted: list) -> Non
 
 
 def download_webvtt(url: str, lang: str, video_file_path: str) -> None:
-    url_parts: urllib.parse.ParseResult = urllib.parse.urlparse(url)
-    headers = {
-        "Accept": "application/json, text/plain, */*",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "Host": url_parts.hostname,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    }
     srt_file = pathlib.Path(video_file_path).with_suffix(f'.{lang}.srt')
     try:
-        response = requests.request('GET', url, headers=headers, timeout=300)
+        response = SupportWavve.api.request('GET', url)
         if response.status_code == 200:
             vtt = webvtt.from_buffer(BytesIO(response.content))
             with open(srt_file, 'w') as f:
                 vtt.write(f, format='srt')
         else:
             P.logger.error(f'Downloading subtitle failed: {str(srt_file)}')
-    except:
-        P.logger.error(traceback.format_exc())
+    except Exception:
+        P.logger.exception(url)

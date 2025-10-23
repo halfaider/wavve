@@ -2,7 +2,6 @@ import os
 import re
 import time
 import datetime
-import traceback
 from typing import Iterable
 
 import flask
@@ -244,7 +243,7 @@ class ModuleRecent(PluginModuleBase):
             case 'whitelist':
                 try:
                     episode_num = int(vod.episodenumber)
-                except:
+                except Exception:
                     episode_num = 0
                 if settings['whitelist_first_episode_download'] and episode_num == 1:
                     return
@@ -307,8 +306,8 @@ class ModuleRecent(PluginModuleBase):
         for vod in vods:
             try:
                 self.pick_out_recent_vod(vod, settings)
-            except:
-                P.logger.error(traceback.format_exc())
+            except Exception:
+                P.logger.excetion(f"contentid={vod.contentid} vod.title={vod.filename}")
             finally:
                 vod.save()
 
@@ -345,8 +344,8 @@ class ModuleRecent(PluginModuleBase):
             try:
                 P.logger.debug(f'Retrieve vod: {vod.contentid}')
                 self.retrieve_recent_vod(vod, settings)
-            except:
-                P.logger.error(traceback.format_exc())
+            except Exception:
+                P.logger.exception(f"{vod.programtitle} [{vod.episodenumber}] {vod.contentid}")
                 vod.retry += 1
             finally:
                 vod.save()
@@ -358,8 +357,8 @@ class ModuleRecent(PluginModuleBase):
         try:
             P.logger.debug(f'Update new vods...')
             self.save_recent_vods(self.get_recent_vods())
-        except:
-            P.logger.error(traceback.format_exc())
+        except Exception as e:
+            P.logger.exception(str(e))
         # UHD 대기 재시도
         retry_vods = ModelWavveRecent.get_episodes_by_etc_abort(5)
         # QVOD 방송중 재시도
@@ -392,7 +391,6 @@ class ModuleRecent(PluginModuleBase):
             self.schedule_started_at = datetime.datetime.now()
             save_path = ToolUtil.make_path(P.ModelSetting.get(f"{self.name}_save_path"))
             foler_tmp = os.path.join(F.config['path_data'], 'tmp')
-            headers = self.get_module('basic').download_headers
             for vod in ModelWavveRecent.get_episodes_by_etc_abort(0):
                 try:
                     # 다운로드 준비
@@ -412,16 +410,27 @@ class ModuleRecent(PluginModuleBase):
                     # start_time 저장
                     vod.save()
                     callback_id = f'{P.package_name}_{self.name}_{vod.id}'
-                    if vod.drm:
+                    if vod.streaming_json.get('drm'):
+                        # dash
+                        drm_key_request_properties = vod.streaming_json['play_info'].get('drm_key_request_properties')
+                        drm_license_uri = vod.streaming_json['play_info'].get('drm_license_uri')
+                        if not (drm_key_request_properties and drm_license_uri):
+                            P.logger(f"Could not download this DRM file: {vod.filename}")
+                            P.logger.error(vod.streaming_json['play_info'])
+                            vod.etc_abort = 0
+                            vod.retry += 1
+                            vod.save()
+                            continue
+
                         params = {
                             'callback_id': callback_id,
                             'logger' : P.logger,
                             'mpd_url' : vod.playurl,
                             'code' : vod.contentid,
                             'output_filename' : vod.filename,
-                            'license_headers' : vod.streaming_json['play_info']['drm_key_request_properties'],
-                            'license_url' : vod.streaming_json['play_info']['drm_license_uri'],
-                            'mpd_headers': vod.streaming_json['play_info']['mpd_headers'],
+                            'license_headers' : drm_key_request_properties,
+                            'license_url' : drm_license_uri,
+                            'mpd_headers': vod.streaming_json['play_info'].get('mpd_headers'),
                             'clean' : True,
                             'folder_tmp': foler_tmp,
                             'folder_output': save_path,
@@ -430,10 +439,9 @@ class ModuleRecent(PluginModuleBase):
                         downloader_cls = REDownloader if P.ModelSetting.get(f'{self.name}_drm') == 'RE' else WVDownloader
                         downloader = downloader_cls(params, callback_function=self.wvtool_callback_function)
                     else:
+                        headers = vod.streaming_json['play_info'].get('headers')
                         match P.ModelSetting.get(f'{self.name}_hls'):
                             case 'RE':
-                                if vod.streaming_json.get('authtype') == 'cookie':
-                                    headers['Cookie'] = vod.streaming_json.get('awscookie') or ''
                                 downloader = REDownloader({
                                     'callback_id': callback_id,
                                     'logger': P.logger,
@@ -449,9 +457,8 @@ class ModuleRecent(PluginModuleBase):
                                     'proxies': SupportWavve._SupportWavve__get_proxies(),
                                 }, self.wvtool_callback_function)
                             case _:
-                                tmp = SupportWavve.get_prefer_url(vod.playurl)
                                 downloader = SupportFfmpeg(
-                                    tmp,
+                                    SupportWavve.get_prefer_url(vod.playurl, headers),
                                     vod.filename,
                                     save_path=save_path,
                                     max_pf_count=None,
@@ -477,15 +484,14 @@ class ModuleRecent(PluginModuleBase):
                     downloader.start()
                     self.current_download_count += 1
                     time.sleep(10)
-                except:
-                    P.logger.error(traceback.format_exc())
-                    P.logger.error(f'Failed while downloading: {vod.contentid}')
+                except Exception:
+                    P.logger.exception(f'Failed while downloading: {vod.contentid}')
                     vod.retry += 1
                     vod.etc_abort = 0
                 finally:
                     vod.save()
-        except:
-            P.logger.error(traceback.format_exc())
+        except Exception as e:
+            P.logger.exception(str(e))
         finally:
             self.schedule_running = False
             P.logger.debug(f'Schedule ends.')
@@ -510,8 +516,8 @@ class ModuleRecent(PluginModuleBase):
                             cs.execute(f'ALTER TABLE "wavve_recent" ADD COLUMN "programgenre" VARCHAR')
                         cs.execute(f'DELETE FROM "wavve_setting" WHERE key = "recent_search_genre"')
                         cs.execute(f'UPDATE "wavve_setting" SET value = "1.1" WHERE key = "recent_db_version"')
-            except:
-                P.logger.error(traceback.print_exc())
+            except Exception as e:
+                P.logger.exception(str(e))
             finally:
                 F.db.session.flush()
 

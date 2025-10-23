@@ -2,7 +2,6 @@ import os
 import threading
 import queue
 import time
-import traceback
 import datetime
 
 import flask
@@ -126,8 +125,7 @@ class ModuleProgram(PluginModuleBase):
                         downloader.stop_by_callback_id(f"wavve_program_{arg2}")
                     case 'reset':
                         if self.download_queue:
-                            with self.download_queue.mutex:
-                                self.download_queue.queue.clear()
+                            self.download_queue.queue.clear()
                         for _ in ModelWavveProgram.queue_list:
                             if not _.is_drm and not _.completed and _.contents_json:
                                 SupportFfmpeg.stop_by_callback_id(f"wavve_program_{_.id}")
@@ -188,19 +186,52 @@ class ModuleProgram(PluginModuleBase):
                         break
 
                 if not streaming_data:
+                    P.logger.error('No streaming data')
+                    db_item.ffmpeg_status = "ERROR"
+                    db_item.ffmpeg_status_kor = "스트리밍 정보 없음"
+                    db_item.save()
+                    self.socketio_callback('status', db_item.as_dict_for_queue())
                     self.download_queue.task_done()
                     continue
 
                 save_path = ToolUtil.make_path(P.ModelSetting.get(f"{self.name}_save_path"))
                 folder_tmp = os.path.join(F.config['path_data'], 'tmp')
-                headers = self.get_module('basic').download_headers
                 callback_id = f"{P.package_name}_{self.name}_{db_item.id}"
-                if not streaming_data['play_info']['drm']:
-                    uri = streaming_data.get('play_info', {}).get('hls') or streaming_data.get('playurl')
+                if streaming_data.get('drm'):
+                     # dash
+                    drm_key_request_properties = streaming_data['play_info'].get('drm_key_request_properties')
+                    drm_license_uri = streaming_data['play_info'].get('drm_license_uri')
+                    if not (drm_key_request_properties and drm_license_uri):
+                        P.logger.error(f"Could not download this DRM file: {db_item.filename}")
+                        P.logger.error(streaming_data['play_info'])
+                        db_item.ffmpeg_status = "ERROR"
+                        db_item.ffmpeg_status_kor = "DRM 오류"
+                        db_item.save()
+                        self.socketio_callback('status', db_item.as_dict_for_queue())
+                        self.download_queue.task_done()
+                        continue
+
+                    params = {
+                        'callback_id': callback_id,
+                        'logger' : P.logger,
+                        'mpd_url' : streaming_data['play_info']['uri'],
+                        'code' : db_item.episode_code,
+                        'output_filename' : db_item.filename,
+                        'license_headers' : drm_key_request_properties,
+                        'license_url' : drm_license_uri,
+                        'mpd_headers': streaming_data['play_info'].get('mpd_headers'),
+                        'clean' : True,
+                        'folder_tmp': folder_tmp,
+                        'folder_output': save_path,
+                        'proxies': SupportWavve._SupportWavve__get_proxies(),
+                    }
+                    downloader_cls = REDownloader if P.ModelSetting.get(f'{self.name}_drm') == 'RE' else WVDownloader
+                    downloader = downloader_cls(params, callback_function=self.wvtool_callback_function)
+                else:
+                    uri = streaming_data['play_info'].get('hls') or streaming_data.get('playurl')
+                    headers = streaming_data['play_info'].get('headers')
                     match P.ModelSetting.get(f'{self.name}_hls'):
                         case 'RE':
-                            if streaming_data['authtype'] == 'cookie':
-                                headers['Cookie'] = streaming_data.get('awscookie', '')
                             downloader = REDownloader({
                                 'callback_id': callback_id,
                                 'logger': P.logger,
@@ -216,32 +247,15 @@ class ModuleProgram(PluginModuleBase):
                                 'proxies': SupportWavve._SupportWavve__get_proxies(),
                             }, self.wvtool_callback_function)
                         case _:
-                            tmp = SupportWavve.get_prefer_url(uri)
+                            tmp = SupportWavve.get_prefer_url(uri, headers)
                             downloader = SupportFfmpeg(
                                 tmp,
                                 db_item.filename,
                                 save_path=save_path,
                                 callback_function=self.ffmpeg_listener,
                                 callback_id=callback_id,
-                                headers=self.get_module('basic').download_headers
+                                headers=headers
                             )
-                else:
-                    params = {
-                        'callback_id': callback_id,
-                        'logger' : P.logger,
-                        'mpd_url' : streaming_data['play_info']['uri'],
-                        'code' : db_item.episode_code,
-                        'output_filename' : db_item.filename,
-                        'license_headers' : streaming_data['play_info']['drm_key_request_properties'],
-                        'license_url' : streaming_data['play_info']['drm_license_uri'],
-                        'mpd_headers': streaming_data['play_info']['mpd_headers'],
-                        'clean' : True,
-                        'folder_tmp': folder_tmp,
-                        'folder_output': save_path,
-                        'proxies': SupportWavve._SupportWavve__get_proxies(),
-                    }
-                    downloader_cls = REDownloader if P.ModelSetting.get(f'{self.name}_drm') == 'RE' else WVDownloader
-                    downloader = downloader_cls(params, callback_function=self.wvtool_callback_function)
                 # 자막 다운로드
                 download_webvtts(
                     streaming_data.get('subtitles', []),
@@ -254,8 +268,7 @@ class ModuleProgram(PluginModuleBase):
                 self.download_queue.task_done()
 
             except Exception as e:
-                P.logger.error(f"Exception:{str(e)}")
-                P.logger.error(traceback.format_exc())
+                P.logger.exception(str(e))
 
     def db_delete(self, day: int | str) -> int:
         return ModelWavveProgram.delete_all(day=day)

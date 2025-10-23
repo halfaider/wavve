@@ -1,7 +1,6 @@
 import os
 import re
 import pathlib
-import traceback
 
 import flask
 
@@ -35,17 +34,6 @@ class ModuleBasic(PluginModuleBase):
         }
         self.last_data = None
 
-    @property
-    def download_headers(self) -> dict:
-        return {
-        "Accept": "*/*",
-        'Accept-Encoding': 'gzip, deflate, br, zstd',
-        'Accept-Language': 'ko,ko-KR;q=0.9,en-US;q=0.8,en;q=0.7',
-        'User-Agent' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        'Connection': 'keep-alive',
-        'Cache-Control': 'no-cache',
-    }
-
     def process_menu(self, page_name: str, req: flask.Request) -> flask.Response:
         arg = P.ModelSetting.to_dict()
         if page_name == 'download':
@@ -59,12 +47,35 @@ class ModuleBasic(PluginModuleBase):
                 ret = self.analyze(arg1, quality=arg2) if arg2 else self.analyze(arg1)
             case 'download_start':
                 save_path = ToolUtil.make_path(P.ModelSetting.get(f"{self.name}_save_path"))
-                if arg3 == 'hls':
+                if self.last_data['streaming'].get('drm'):
+                    # dash
+                    drm_key_request_properties = self.last_data['streaming']['play_info'].get('drm_key_request_properties') or ''
+                    drm_license_uri = self.last_data['streaming']['play_info'].get('drm_license_uri') or ''
+                    mpd_headers = self.last_data['streaming']['play_info'].get('mpd_headers')
+                    if not all((drm_key_request_properties, drm_license_uri, mpd_headers)):
+                        P.logger.error(f"Could not download this DRM file: {self.last_data['available']['filename']}")
+                        P.logger.error(self.last_data['streaming']['play_info'])
+                        return {'ret':'failed'}
+                    parameters = {
+                        'callback_id': 'wavve_basic',
+                        'logger': P.logger,
+                        'mpd_url': self.last_data['streaming']['playurl'],
+                        'code': self.last_data['code'],
+                        'output_filename': self.last_data['available']['filename'],
+                        'license_headers': drm_key_request_properties,
+                        'license_url': drm_license_uri,
+                        'mpd_headers': mpd_headers,
+                        'clean': True,
+                        'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
+                        'folder_output': save_path,
+                        'proxies': SupportWavve._SupportWavve__get_proxies(),
+                    }
+                    downloader_cls = REDownloader if P.ModelSetting.get(f'{self.name}_drm') == 'RE' else WVDownloader
+                    downloader = downloader_cls(parameters)
+                else:
+                    headers = self.last_data['streaming']['play_info'].get('headers')
                     match P.ModelSetting.get(f'{self.name}_hls'):
                         case 'RE':
-                            headers = self.download_headers
-                            if self.last_data['streaming']['authtype'] == 'cookie':
-                                headers['Cookie'] = self.last_data['streaming'].get('awscookie', '')
                             downloader = REDownloader({
                                 'callback_id': 'wavve_basic',
                                 'logger': P.logger,
@@ -81,29 +92,12 @@ class ModuleBasic(PluginModuleBase):
                             })
                         case _:
                             downloader = SupportFfmpeg(
-                                SupportWavve.get_prefer_url(arg1),
+                                SupportWavve.get_prefer_url(arg1, headers),
                                 arg2,
                                 save_path=save_path,
                                 callback_id=f"{P.package_name}",
-                                headers=self.download_headers,
+                                headers=headers,
                             )
-                else:
-                    parameters = {
-                        'callback_id': 'wavve_basic',
-                        'logger': P.logger,
-                        'mpd_url': self.last_data['streaming']['playurl'],
-                        'code': self.last_data['code'],
-                        'output_filename': self.last_data['available']['filename'],
-                        'license_headers': self.last_data['streaming']['play_info']['drm_key_request_properties'],
-                        'license_url': self.last_data['streaming']['play_info']['drm_license_uri'],
-                        'mpd_headers': self.last_data['streaming']['play_info']['mpd_headers'],
-                        'clean': True,
-                        'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
-                        'folder_output': save_path,
-                        'proxies': SupportWavve._SupportWavve__get_proxies(),
-                    }
-                    downloader_cls = REDownloader if P.ModelSetting.get(f'{self.name}_drm') == 'RE' else WVDownloader
-                    downloader = downloader_cls(parameters)
                 # 자막 다운로드
                 download_webvtts(
                     self.last_data['streaming'].get('subtitles', []),
@@ -175,10 +169,4 @@ class ModuleBasic(PluginModuleBase):
             self.last_data.update({'url_type': url_type, 'code':code, 'streaming':data2, 'available' : data3})
             return self.last_data
         except Exception as e:
-            P.logger.error(f"Exception:{str(e)}")
-            P.logger.error(traceback.format_exc())
-
-    def plugin_load(self):
-        from sjva import Auth
-        if Auth.get_auth_status()['ret'] == False:
-            raise Exception('auth fail!')
+            P.logger.exception(str(e))
