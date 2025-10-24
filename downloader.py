@@ -16,32 +16,18 @@ import webvtt
 
 from wv_tool import WVDownloader
 from wv_tool.lib.mpegdash.parser import MPEGDASHParser
-from wv_tool.tool import MP4DECRYPT, MKVMERGE
+from wv_tool.tool import MP4DECRYPT as WVTOOL_MP4DECRYPT, MKVMERGE as WVTOOL_MKVMERGE
 from support_site import SupportWavve
 from .setup import P, F
 
 
-PATH_DATA = pathlib.Path(F.config['path_data'])
-BIN_DIR = pathlib.Path(__file__).parent / 'bin' / platform.system()
-if platform.machine() == 'aarch64':
-    BIN_DIR = BIN_DIR.parent / 'LinuxArm'
-RE_EXECUTE = BIN_DIR / 'N_m3u8DL-RE'
-if RE_EXECUTE.exists():
-    mode = RE_EXECUTE.stat().st_mode
-    RE_EXECUTE.chmod(mode | stat.S_IEXEC)
-if platform.system() == 'Windows':
-    RE_EXECUTE = RE_EXECUTE.with_name('N_m3u8DL-RE.exe')
-    FFMPEG = BIN_DIR / 'ffmpeg.exe'
-    MP4DECRYPT_ = BIN_DIR / 'mp4decrypt.exe'
-    MKVMERGE_ = BIN_DIR / 'mkvmerge.exe'
-    if not MKVMERGE_.exists():
-        MKVMERGE_.symlink_to(MKVMERGE)
-else:
-    FFMPEG = pathlib.Path('/usr/bin/ffmpeg')
-    MP4DECRYPT_ = BIN_DIR / 'mp4decrypt'
-if not MP4DECRYPT_.exists():
-    MP4DECRYPT_.unlink(missing_ok=True)
-    MP4DECRYPT_.symlink_to(MP4DECRYPT)
+SYSTEM = platform.system().lower()
+BINARIES = {
+    'N_m3u8DL-RE': [None, 'N_m3u8DL-RE.exe' if SYSTEM == 'windows' else 'N_m3u8DL-RE', None],
+    'ffmpeg': [None, 'ffmpeg.exe' if SYSTEM == 'windows' else 'ffmpeg', None],
+    'mp4decrypt': [None, 'mp4decrypt.exe' if SYSTEM == 'windows' else 'mp4decrypt', WVTOOL_MP4DECRYPT],
+    'mkvmerge': [None, 'mkvmerge.exe' if SYSTEM == 'windows' else 'mkvmerge', WVTOOL_MKVMERGE],
+}
 
 
 class REDownloader(WVDownloader):
@@ -106,20 +92,20 @@ class REDownloader(WVDownloader):
             else:
                 self.set_status("ERROR")
             return result
-        except Exception as e:
-            self.logger.exception(repr(e))
+        except Exception:
+            self.logger.exception("다운로드 중 오류가 발생했습니다.")
         return False
 
     def get_command(self, what_for: str = 'download_m3u8') -> list:
         output_filepath = pathlib.Path(self.output_filepath)
-        plugin_ffmpeg = F.PluginManager.get_plugin_instance('ffmpeg')
-        if plugin_ffmpeg:
-            FFMPEG = pathlib.Path(plugin_ffmpeg.ModelSetting.get('ffmpeg_path'))
-        if which_path := shutil.which(str(FFMPEG), mode=os.F_OK | os.X_OK, path=None):
-            FFMPEG = pathlib.Path(which_path)
-        else:
-            raise Exception(f"Could not execute FFmpeg: {str(FFMPEG)}")
-        command = [str(RE_EXECUTE)]
+        n_m3u8dl_re = BINARIES.get('N_m3u8DL-RE')[0]
+        ffmpeg = BINARIES.get('ffmpeg')[0]
+        mp4decrypt = BINARIES.get('mp4decrypt')[0]
+        mkvmerge = BINARIES.get('mkvmerge')[0]
+        for binary in (n_m3u8dl_re, ffmpeg, mp4decrypt, mkvmerge):
+            if binary is None:
+                raise Exception(f"{binary.name} 실행 파일이 없습니다.")
+        command = [str(n_m3u8dl_re)]
         match what_for:
             case 'download_mpd':
                 # 웨이브는 특정 CDN에서 invalid XML로 응답함
@@ -141,8 +127,8 @@ class REDownloader(WVDownloader):
             '--tmp-dir', self.temp_dir,
             '--save-dir', self.output_dir,
             '--save-name', output_filepath.stem,
-            '--ffmpeg-binary-path', str(FFMPEG),
-            '--decryption-binary-path', MP4DECRYPT,
+            '--ffmpeg-binary-path', str(ffmpeg),
+            '--decryption-binary-path', str(mp4decrypt),
             '--write-meta-json', 'False',
             '--download-retry-count', '3',
             '--log-level', 'INFO',
@@ -185,7 +171,6 @@ class REDownloader(WVDownloader):
         else:
             self.logger.warning(f'Process exit code: {process.returncode}')
             return False
-
 
     RE_LOGGING_LEVEL = {
         'WARN': logging.WARNING,
@@ -235,3 +220,72 @@ def download_webvtt(url: str, lang: str, video_file_path: str) -> None:
             P.logger.error(f'Downloading subtitle failed: {str(srt_file)}')
     except Exception:
         P.logger.exception(url)
+
+
+def check_executable(path: pathlib.Path) -> tuple[bool, pathlib.Path | None]:
+    which_path = shutil.which(str(path))
+    if which_path:
+        return True, pathlib.Path(which_path)
+    if not path.exists():
+        return False, None
+    if SYSTEM != 'windows':
+        try:
+            path.chmod(path.stat().st_mode | stat.S_IEXEC)
+            if os.access(path, os.X_OK):
+                return True, path
+        except Exception:
+            P.logger.exception(f'실행 권한 부여 실패: {path}')
+    return False, None
+
+def set_binary() -> None:
+    machine = platform.machine().lower()
+    path_bin = pathlib.Path(P.ModelSetting.get('basic_bin_path')).absolute()
+    path_bin.mkdir(parents=True, exist_ok=True)
+    for name in BINARIES:
+        binary, filename, alternative = BINARIES[name]
+        if binary is not None:
+            continue
+        binary = path_bin / filename
+        BINARIES[name][0] = binary
+        result, checked_path = check_executable(binary)
+        if result:
+            BINARIES[name][0] = checked_path
+            continue
+        match name:
+            case 'N_m3u8DL-RE':
+                match SYSTEM, machine:
+                    case 'linux', m if m in ("aarch64", "arm64"):
+                        old_sub = "LinuxArm"
+                    case 'linux', _:
+                        old_sub = "Linux"
+                    case 'windows', _:
+                        old_sub = "Windows"
+                    case _:
+                        P.logger.warning(f"Unsupported device: {SYSTEM} {machine}")
+                        continue
+                path_bin_old = pathlib.Path(__file__).parent / 'bin' / old_sub / filename
+                if path_bin_old.exists():
+                    # 예전 파일 존재
+                    shutil.copy2(path_bin_old, binary)
+                else:
+                    # 예전 파일도 없음
+                    BINARIES[name][0] = None
+            case 'ffmpeg':
+                check_result, checked_path = check_executable(pathlib.Path(filename))
+                if check_result:
+                    # N_m3u8DL-RE과 같은 폴더에...
+                    BINARIES[name][0].symlink_to(str(checked_path))
+                else:
+                    # 실행 파일 없음
+                    BINARIES[name][0] = None
+            case 'mp4decrypt' | 'mkvmerge':
+                alternative_bin = pathlib.Path(alternative)
+                check_result, checked_path = check_executable(alternative_bin)
+                if check_result:
+                    # N_m3u8DL-RE과 같은 폴더에...
+                    BINARIES[name][0].symlink_to(str(checked_path))
+                else:
+                    BINARIES[name][0] = None
+
+        if BINARIES[name][0] is None:
+            P.logger.warning(f'Not found: {filename}')

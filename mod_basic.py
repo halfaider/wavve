@@ -12,7 +12,7 @@ from support_site import SupportWavve
 from wv_tool import WVDownloader
 
 from .setup import F, P
-from .downloader import REDownloader, download_webvtts, download_webvtt
+from .downloader import REDownloader, download_webvtts, download_webvtt, set_binary
 
 
 name = 'basic'
@@ -31,6 +31,7 @@ class ModuleBasic(PluginModuleBase):
             f"{self.name}_drm": "WV",
             f"{self.name}_subtitle_langs": "all",
             f"{self.name}_hls": "WV",
+            f"{self.name}_bin_path": (pathlib.Path(F.config['path_data']) / 'bin').absolute().as_posix()
         }
         self.last_data = None
 
@@ -51,11 +52,11 @@ class ModuleBasic(PluginModuleBase):
                     # dash
                     drm_key_request_properties = self.last_data['streaming']['play_info'].get('drm_key_request_properties') or ''
                     drm_license_uri = self.last_data['streaming']['play_info'].get('drm_license_uri') or ''
-                    mpd_headers = self.last_data['streaming']['play_info'].get('mpd_headers')
-                    if not all((drm_key_request_properties, drm_license_uri, mpd_headers)):
+                    if not (drm_key_request_properties and drm_license_uri):
                         P.logger.error(f"Could not download this DRM file: {self.last_data['available']['filename']}")
                         P.logger.error(self.last_data['streaming']['play_info'])
                         return {'ret':'failed'}
+
                     parameters = {
                         'callback_id': 'wavve_basic',
                         'logger': P.logger,
@@ -64,7 +65,7 @@ class ModuleBasic(PluginModuleBase):
                         'output_filename': self.last_data['available']['filename'],
                         'license_headers': drm_key_request_properties,
                         'license_url': drm_license_uri,
-                        'mpd_headers': mpd_headers,
+                        'mpd_headers': self.last_data['streaming']['play_info'].get('mpd_headers'),
                         'clean': True,
                         'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
                         'folder_output': save_path,
@@ -170,3 +171,13 @@ class ModuleBasic(PluginModuleBase):
             return self.last_data
         except Exception as e:
             P.logger.exception(str(e))
+
+    def plugin_load(self) -> None:
+        set_binary()
+
+    def setting_save_after(self, changes: list) -> None:
+        '''override'''
+        for change in changes:
+            match change:
+                case 'base_bin_path':
+                    set_binary()

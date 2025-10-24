@@ -461,10 +461,7 @@ class ModuleRecent(PluginModuleBase):
                                     SupportWavve.get_prefer_url(vod.playurl, headers),
                                     vod.filename,
                                     save_path=save_path,
-                                    max_pf_count=None,
                                     headers=headers,
-                                    timeout_minute=60,
-                                    proxy=None,
                                     callback_id=callback_id,
                                     callback_function=self.ffmpeg_listener,
                                 )

@@ -9,6 +9,7 @@
 <form id="setting">
 {{ macros.setting_select('basic_quality', '기본 화질', [['2160p', '2160p'], ['1080p', '1080p'], ['720p', '720p'], ['480p', '480p'], ['360p', '360p']], col='3', value=arg['basic_quality']) }}
 {{ macros.setting_input_text('basic_save_path', '저장 폴더', value=arg['basic_save_path'], desc=['절대경로 혹은 {PATH_DATA}/download 와 같은 데이터 폴더 기준 상대 경로']) }}
+{{ macros.setting_input_text('basic_bin_path', '실행 파일 폴더', value=arg['basic_bin_path'], desc=['N_m3u8dl_RE, ffmpeg, mp4decrypt, mkvmerge가 저장/링크되어 있는 경로', '자동으로 저장/링크되지 못한 파일은 직접 넣어주세요']) }}
 {{ macros.setting_select('basic_drm', 'DRM 다운로더', [['WV', 'aria2c'], ['RE', 'N_m3u8dl_RE']], col='3', value=arg['basic_drm']) }}
 {{ macros.setting_select('basic_hls', 'HLS 다운로더', [['WV', 'FFMPEG'], ['RE', 'N_m3u8dl_RE']], col='3', value=arg['basic_hls']) }}
 {{ macros.setting_input_text('basic_subtitle_langs', '자막 언어', value=arg['basic_subtitle_langs'], col='9', desc=['all: 모든 언어', 'ko: 한국어 자막만 다운', 'ko,en: 한국어, 영어 다운로드 (구분: 쉼표)', '공백: 다운로드 하지 않음', '기본 모듈에서 제공되는 언어 코드 확인']) }}
