@@ -102,9 +102,9 @@ class REDownloader(WVDownloader):
         ffmpeg = BINARIES.get('ffmpeg')[0]
         mp4decrypt = BINARIES.get('mp4decrypt')[0]
         mkvmerge = BINARIES.get('mkvmerge')[0]
-        for binary in (n_m3u8dl_re, ffmpeg, mp4decrypt, mkvmerge):
+        for binary, name in ((n_m3u8dl_re, 'N_m3u8DL-RE'), (ffmpeg, 'ffmpeg'), (mp4decrypt, 'mp4decrypt'), (mkvmerge, 'mkvmerge')):
             if binary is None:
-                raise Exception(f"{binary.name} 실행 파일이 없습니다.")
+                raise Exception(f"{name} 실행 파일이 없습니다.")
         command = [str(n_m3u8dl_re)]
         match what_for:
             case 'download_mpd':
