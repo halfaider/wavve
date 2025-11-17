@@ -270,20 +270,21 @@ def set_binary() -> None:
                 else:
                     # 예전 파일도 없음
                     BINARIES[name][0] = None
-            case 'ffmpeg':
-                check_result, checked_path = check_executable(pathlib.Path(filename))
-                if check_result:
-                    # N_m3u8DL-RE과 같은 폴더에...
-                    BINARIES[name][0].symlink_to(str(checked_path))
+            case 'ffmpeg' | 'mp4decrypt' | 'mkvmerge':
+                if name in ('mp4decrypt', 'mkvmerge'):
+                    alternative_bin = pathlib.Path(alternative)
+                    check_result, checked_path = check_executable(alternative_bin)
                 else:
-                    # 실행 파일 없음
-                    BINARIES[name][0] = None
-            case 'mp4decrypt' | 'mkvmerge':
-                alternative_bin = pathlib.Path(alternative)
-                check_result, checked_path = check_executable(alternative_bin)
+                    check_result, checked_path = check_executable(pathlib.Path(filename))
                 if check_result:
                     # N_m3u8DL-RE과 같은 폴더에...
-                    BINARIES[name][0].symlink_to(str(checked_path))
+                    try:
+                        if BINARIES[name][0].is_symlink() and not BINARIES[name][0].exists():
+                            BINARIES[name][0].unlink()
+                        BINARIES[name][0].symlink_to(str(checked_path))
+                    except Exception:
+                        P.logger.exception(f"링크 생성 실패: {BINARIES[name][0]} source='{str(checked_path)}'")
+                        BINARIES[name][0] = None
                 else:
                     BINARIES[name][0] = None
 
