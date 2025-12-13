@@ -1,6 +1,5 @@
 import os
 import re
-import glob
 import stat
 import shutil
 import logging
@@ -161,23 +160,26 @@ class REDownloader(WVDownloader):
         return command
 
     def __get_mux_import(self, file: pathlib.Path) -> list:
-        base_name = file.stem
-        parent_dir = file.parent
-        pattern = f"{glob.escape(base_name)}*.srt"
+        subtitle_files = [
+            sub
+            for sub in file.parent.iterdir()
+            if sub.name.startswith(file.stem) and sub.suffix in {'.srt', '.vtt'}
+        ]
         parameters = []
-        for srt_path in parent_dir.glob(pattern):
-            if len(srt_path.suffixes) < 2:
+        for subtitle in subtitle_files:
+            if len(subtitle.suffixes) < 2:
                 lang_code = 'und'
                 lang_name = 'Undefined'
             else:
-                code = srt_path.suffixes[-2].lstrip('.').lower()
+                code = subtitle.suffixes[-2].lstrip('.').lower()
+                code = re.split(r'[\W_]+', code)[0]
                 if code in self.LANGUAGES:
                     lang_code = code
                     lang_name = self.LANGUAGES[code]
                 else:
                     lang_code = 'und'
                     lang_name = 'Undefined'
-            parameters.extend(('--mux-import', f'path="{str(srt_path)}":lang={lang_code}:name="{lang_name}"'))
+            parameters.extend(('--mux-import', f'path="{str(subtitle)}":lang={lang_code}:name="{lang_name}"'))
         return parameters
 
     def check_file_path(self) -> bool:
