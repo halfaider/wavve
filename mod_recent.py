@@ -359,24 +359,12 @@ class ModuleRecent(PluginModuleBase):
             self.save_recent_vods(self.get_recent_vods())
         except Exception as e:
             P.logger.exception(str(e))
-        # UHD 대기 재시도
-        retry_vods = ModelWavveRecent.get_episodes_by_etc_abort(5)
-        # QVOD 방송중 재시도
-        retry_vods.extend(ModelWavveRecent.get_episodes_by_etc_abort(8))
-        # 사용자 중지 재시도
-        retry_vods.extend(ModelWavveRecent.get_episodes_by_user_abort(True))
-        # 다운로드 도중 실패 재시도
-        retry_vods.extend(ModelWavveRecent.get_episodes_by_etc_abort(31))
+        retry_vods = []
+        # UHD 대기, QVOD 방송중, 사용자 중지, 다운로드 도중 실패, 데이터 갱신 실패, 다운로드 오류 재시도
+        for etc_abort in (5, 8, 30, 31, 33, 34):
+            retry_vods.extend(ModelWavveRecent.get_episodes_by_etc_abort(etc_abort))
         P.logger.debug(f'Retry vods...')
         self.pick_out_recent_vods(retry_vods)
-        # JSON 데이터 갱신 실패 재시도
-        P.logger.debug(f'Retry vods failed while retrieving...')
-        for vod in ModelWavveRecent.get_episodes_by_etc_abort(33):
-            if vod.retry < P.ModelSetting.get_int(f"{self.name}_max_retry"):
-                vod.etc_abort = 0
-                vod.save()
-            else:
-                P.logger.debug(f'Retry limit exceeded: {vod.programtitle} [{vod.episodenumber}] {vod.contentid}')
         # JSON 새로고침
         P.logger.debug(f'Retrieving vods...')
         self.retrieve_recent_vods(ModelWavveRecent.get_episodes_by_etc_abort(0))

@@ -1,5 +1,6 @@
 import os
 import re
+import glob
 import stat
 import shutil
 import logging
@@ -18,7 +19,7 @@ from wv_tool import WVDownloader
 from wv_tool.lib.mpegdash.parser import MPEGDASHParser
 from wv_tool.tool import MP4DECRYPT as WVTOOL_MP4DECRYPT, MKVMERGE as WVTOOL_MKVMERGE
 from support_site import SupportWavve
-from .setup import P, F
+from .setup import P
 
 
 SYSTEM = platform.system().lower()
@@ -31,6 +32,19 @@ BINARIES = {
 
 
 class REDownloader(WVDownloader):
+
+    RE_LOGGING_REGEX = re.compile('\d{2}:\d{2}:\d{2}\.\d{3}\s(\w+)\s?:\s(.+)$')
+    RE_LOGGING_LEVEL = {
+        'WARN': logging.WARNING,
+        'INFO': logging.INFO,
+        'ERROR': logging.ERROR,
+        'DEBUG': logging.DEBUG,
+    }
+    LANGUAGES = {
+        'ko': 'Korean', 'kor': 'Korean',
+        'en': 'English', 'eng': 'English',
+        'ja': 'Japanese', 'jpn': 'Japanese',
+    }
 
     def downloadable(func: callable) -> callable:
         @functools.wraps(func)
@@ -121,8 +135,12 @@ class REDownloader(WVDownloader):
                     command.extend(('--key', f'{key["kid"]}:{key["key"]}'))
             case 'download_m3u8':
                 command.append(self.mpd_url)
+        command.append('--mux-after-done')
         if output_filepath.suffix == '.mkv':
-            command.extend(('--mux-after-done', 'format=mkv:muxer=mkvmerge'))
+            command.append('format=mkv:muxer=mkvmerge')
+        else:
+            command.append('format=mp4')
+        command.extend(self.__get_mux_import(output_filepath))
         command.extend((
             '--tmp-dir', self.temp_dir,
             '--save-dir', self.output_dir,
@@ -135,12 +153,32 @@ class REDownloader(WVDownloader):
             '--mp4-real-time-decryption',
             '--auto-select',
             '--concurrent-download',
-            '--no-log',
+            #'--no-log',
             '--no-ansi-color',
         ))
         for k, v in self.mpd_headers.items():
             command.extend(('-H', f'{k}: {v}'))
         return command
+
+    def __get_mux_import(self, file: pathlib.Path) -> list:
+        base_name = file.stem
+        parent_dir = file.parent
+        pattern = f"{glob.escape(base_name)}*.srt"
+        parameters = []
+        for srt_path in parent_dir.glob(pattern):
+            if len(srt_path.suffixes) < 2:
+                lang_code = 'und'
+                lang_name = 'Undefined'
+            else:
+                code = srt_path.suffixes[-2].lstrip('.').lower()
+                if code in self.LANGUAGES:
+                    lang_code = code
+                    lang_name = self.LANGUAGES[code]
+                else:
+                    lang_code = 'und'
+                    lang_name = 'Undefined'
+            parameters.extend(('--mux-import', f'path="{str(srt_path)}":lang={lang_code}:name="{lang_name}"'))
+        return parameters
 
     def check_file_path(self) -> bool:
         # 파일 이름에 comma 가 있으면 오류: ERROR: cannot open fragments info file
@@ -158,37 +196,37 @@ class REDownloader(WVDownloader):
             return True
 
     def execute_command(self, command: list) -> bool:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf8', errors='ignore')
-        self.parse_re_stdout(process)
         try:
-            process.wait(timeout=3600)
+            with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, text=True, encoding='utf8', errors='ignore') as process:
+                self.parse_re_stdout(process)
+                try:
+                    process.wait(timeout=3600)
+                except Exception:
+                    self.logger.exception(command)
+                    process.kill()
+                    return False
+                if process.returncode == 0:
+                    return True
+                else:
+                    self.logger.warning(f'Process exit code: {process.returncode}')
+                    return False
         except Exception:
             self.logger.exception(command)
-            process.kill()
-            return False
-        if process.returncode == 0:
-            return True
-        else:
-            self.logger.warning(f'Process exit code: {process.returncode}')
             return False
 
-    RE_LOGGING_LEVEL = {
-        'WARN': logging.WARNING,
-        'INFO': logging.INFO,
-        'ERROR': logging.ERROR,
-        'DEBUG': logging.DEBUG,
-    }
     def parse_re_stdout(self, process: subprocess.Popen) -> None:
-        for line in iter(process.stdout.readline, ''):
+        if not process.stdout:
+            return
+        # text=True
+        for line in process.stdout:
             try:
-                if getattr(self, '_stop_flag', self._WVDownloader__stop_flag):
+                if getattr(self, '_stop_flag', False):
                     self.logger.debug(f'Stop downloading...')
                     process.terminate()
                     return False
                 if not (msg := line.strip()):
                     continue
-                match = re.compile('^\d{2}:\d{2}:\d{2}\.\d{3}\s(\w+)\s?:\s(.+)$').search(msg)
-                if match:
+                if match := self.RE_LOGGING_REGEX.search(msg):
                     level = match.group(1)
                     message = match.group(2)
                     self.logger.log(self.RE_LOGGING_LEVEL.get(level, 'DEBUG'), message)
@@ -236,6 +274,7 @@ def check_executable(path: pathlib.Path) -> tuple[bool, pathlib.Path | None]:
         except Exception:
             P.logger.exception(f'실행 권한 부여 실패: {path}')
     return False, None
+
 
 def set_binary() -> None:
     machine = platform.machine().lower()
