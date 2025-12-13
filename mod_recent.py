@@ -307,7 +307,7 @@ class ModuleRecent(PluginModuleBase):
             try:
                 self.pick_out_recent_vod(vod, settings)
             except Exception:
-                P.logger.excetion(f"contentid={vod.contentid} vod.title={vod.filename}")
+                P.logger.exception(f"contentid={vod.contentid} vod.title={vod.filename}")
             finally:
                 vod.save()
 
