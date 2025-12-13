@@ -360,11 +360,19 @@ class ModuleRecent(PluginModuleBase):
         except Exception as e:
             P.logger.exception(str(e))
         retry_vods = []
-        # UHD 대기, QVOD 방송중, 사용자 중지, 다운로드 도중 실패, 데이터 갱신 실패, 다운로드 오류 재시도
-        for etc_abort in (5, 8, 30, 31, 33, 34):
+        # UHD 대기, QVOD 방송중, 사용자 중지, 다운로드 도중 실패, 다운로드 오류 재시도
+        for etc_abort in (5, 8, 30, 31, 34):
             retry_vods.extend(ModelWavveRecent.get_episodes_by_etc_abort(etc_abort))
         P.logger.debug(f'Retry vods...')
         self.pick_out_recent_vods(retry_vods)
+        # 데이터 갱신 실패 재시도
+        P.logger.debug(f'Retry vods failed while retrieving...')
+        for vod in ModelWavveRecent.get_episodes_by_etc_abort(33):
+            if vod.retry < P.ModelSetting.get_int(f"{self.name}_max_retry"):
+                vod.etc_abort = 0
+                vod.save()
+            else:
+                P.logger.debug(f'Retry limit exceeded: {vod.programtitle} [{vod.episodenumber}] {vod.contentid}')
         # JSON 새로고침
         P.logger.debug(f'Retrieving vods...')
         self.retrieve_recent_vods(ModelWavveRecent.get_episodes_by_etc_abort(0))
@@ -577,6 +585,15 @@ class ModuleRecent(PluginModuleBase):
             pass
 
     def wvtool_callback_function(self, args: dict) -> None:
+        """
+        status:
+            READY
+            EXIST_OUTPUT_FILEPATH
+            DOWNLOADING
+            USER_STOP
+            COMPLETED
+            SEGMENT_FAIL
+        """
         #P.logger.debug(f'wvtool_callback_function: {args}')
         db_item = ModelWavveRecent.get_by_id(args['data']['callback_id'].split('_')[-1])
 
