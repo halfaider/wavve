@@ -203,7 +203,7 @@ function make_analyse_result(data) {
     document.getElementById("detail").innerHTML = str;
     document.getElementById("more").innerHTML = '';
   }
-  if (data['url_type'] != 'program' && data.streaming.subtitles.length > 0) {
+  if (data['url_type'] != 'program' && data.streaming?.subtitles?.length > 0) {
     let subtitle = '<div class="form-inline">';
     subtitle += '자막선택&nbsp;&nbsp;&nbsp;&nbsp;<select id="select_subtitle" name="select_subtitle" class="form-control form-control-sm">';
     for (let idx in data.streaming.subtitles) {

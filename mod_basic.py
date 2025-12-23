@@ -48,6 +48,7 @@ class ModuleBasic(PluginModuleBase):
                 ret = self.analyze(arg1, quality=arg2) if arg2 else self.analyze(arg1)
             case 'download_start':
                 save_path = ToolUtil.make_path(P.ModelSetting.get(f"{self.name}_save_path"))
+                proxies = SupportWavve.api.get_session().proxies
                 if self.last_data['streaming'].get('drm'):
                     # dash
                     drm_key_request_properties = self.last_data['streaming']['play_info'].get('drm_key_request_properties') or ''
@@ -56,7 +57,6 @@ class ModuleBasic(PluginModuleBase):
                         P.logger.error(f"Could not download this DRM file: {self.last_data['available']['filename']}")
                         P.logger.error(self.last_data['streaming']['play_info'])
                         return {'ret':'failed'}
-
                     parameters = {
                         'callback_id': 'wavve_basic',
                         'logger': P.logger,
@@ -69,7 +69,7 @@ class ModuleBasic(PluginModuleBase):
                         'clean': True,
                         'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
                         'folder_output': save_path,
-                        'proxies': SupportWavve._SupportWavve__get_proxies(),
+                        'proxies': proxies,
                     }
                     downloader_cls = REDownloader if P.ModelSetting.get(f'{self.name}_drm') == 'RE' else WVDownloader
                     downloader = downloader_cls(parameters)
@@ -89,7 +89,7 @@ class ModuleBasic(PluginModuleBase):
                                 'clean': True,
                                 'folder_tmp': os.path.join(F.config['path_data'], 'tmp'),
                                 'folder_output': save_path,
-                                'proxies': SupportWavve._SupportWavve__get_proxies(),
+                                'proxies': proxies,
                             })
                         case _:
                             downloader = SupportFfmpeg(
@@ -171,6 +171,7 @@ class ModuleBasic(PluginModuleBase):
             return self.last_data
         except Exception as e:
             P.logger.exception(str(e))
+            return self.last_data
 
     def plugin_load(self) -> None:
         set_binary()

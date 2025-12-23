@@ -406,6 +406,7 @@ class ModuleRecent(PluginModuleBase):
                     # start_time 저장
                     vod.save()
                     callback_id = f'{P.package_name}_{self.name}_{vod.id}'
+                    proxies = SupportWavve.api.get_session().proxies
                     if vod.streaming_json.get('drm'):
                         # dash
                         drm_key_request_properties = vod.streaming_json['play_info'].get('drm_key_request_properties')
@@ -430,7 +431,7 @@ class ModuleRecent(PluginModuleBase):
                             'clean' : True,
                             'folder_tmp': foler_tmp,
                             'folder_output': save_path,
-                            'proxies': SupportWavve._SupportWavve__get_proxies(),
+                            'proxies': proxies,
                         }
                         downloader_cls = REDownloader if P.ModelSetting.get(f'{self.name}_drm') == 'RE' else WVDownloader
                         downloader = downloader_cls(params, callback_function=self.wvtool_callback_function)
@@ -450,7 +451,7 @@ class ModuleRecent(PluginModuleBase):
                                     'clean': True,
                                     'folder_tmp': foler_tmp,
                                     'folder_output': save_path,
-                                    'proxies': SupportWavve._SupportWavve__get_proxies(),
+                                    'proxies': proxies,
                                 }, self.wvtool_callback_function)
                             case _:
                                 downloader = SupportFfmpeg(

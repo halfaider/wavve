@@ -157,6 +157,8 @@ class REDownloader(WVDownloader):
         ))
         for k, v in self.mpd_headers.items():
             command.extend(('-H', f'{k}: {v}'))
+        if self.config.get('proxies') and (http_proxy := self.config.get('proxies').get('http')):
+            command.extend(('--custom-proxy', http_proxy))
         return command
 
     def __get_mux_import(self, file: pathlib.Path) -> list:

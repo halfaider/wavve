@@ -197,6 +197,7 @@ class ModuleProgram(PluginModuleBase):
                 save_path = ToolUtil.make_path(P.ModelSetting.get(f"{self.name}_save_path"))
                 folder_tmp = os.path.join(F.config['path_data'], 'tmp')
                 callback_id = f"{P.package_name}_{self.name}_{db_item.id}"
+                proxies = SupportWavve.api.get_session().proxies
                 if streaming_data.get('drm'):
                      # dash
                     drm_key_request_properties = streaming_data['play_info'].get('drm_key_request_properties')
@@ -223,7 +224,7 @@ class ModuleProgram(PluginModuleBase):
                         'clean' : True,
                         'folder_tmp': folder_tmp,
                         'folder_output': save_path,
-                        'proxies': SupportWavve._SupportWavve__get_proxies(),
+                        'proxies': proxies,
                     }
                     downloader_cls = REDownloader if P.ModelSetting.get(f'{self.name}_drm') == 'RE' else WVDownloader
                     downloader = downloader_cls(params, callback_function=self.wvtool_callback_function)
@@ -244,7 +245,7 @@ class ModuleProgram(PluginModuleBase):
                                 'clean': True,
                                 'folder_tmp': folder_tmp,
                                 'folder_output': save_path,
-                                'proxies': SupportWavve._SupportWavve__get_proxies(),
+                                'proxies': proxies,
                             }, self.wvtool_callback_function)
                         case _:
                             tmp = SupportWavve.get_prefer_url(uri, headers)
