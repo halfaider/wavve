@@ -403,15 +403,14 @@ class ModuleRecent(PluginModuleBase):
                         self.retrieve_recent_vod(vod, self.retrieve_settings)
 
                     # 장르 별 다운로드 폴더 사용
-                    try:
-                        if vod.programgenre in P.ModelSetting.get_list(f"{self.name}_genre_path_targets", delimeter=","):
-                            download_path = Path(P.ModelSetting.get(f"{self.name}_genre_base_path")) / vod.programgenre
-                            save_path = ToolUtil.make_path(str(download_path))
-                    except Exception:
-                        P.logger.exception(f"{vod.id=} {vod.programgenre=}")
+                    if vod.programgenre in P.ModelSetting.get_list(f"{self.name}_genre_path_targets", delimeter=","):
+                        download_path = Path(P.ModelSetting.get(f"{self.name}_genre_base_path")) / vod.programgenre
+                        download_path = ToolUtil.make_path(str(download_path))
+                    else:
+                        download_path = save_path
 
                     vod.pf = 0
-                    vod.save_path = save_path
+                    vod.save_path = download_path
                     vod.start_time = datetime.datetime.now()
                     vod.etc_abort = 31
                     # start_time 저장
@@ -441,7 +440,7 @@ class ModuleRecent(PluginModuleBase):
                             'mpd_headers': vod.streaming_json['play_info'].get('mpd_headers'),
                             'clean' : True,
                             'folder_tmp': foler_tmp,
-                            'folder_output': save_path,
+                            'folder_output': vod.save_path,
                             'proxies': proxies,
                         }
                         downloader_cls = REDownloader if P.ModelSetting.get(f'{self.name}_drm') == 'RE' else WVDownloader
@@ -461,14 +460,14 @@ class ModuleRecent(PluginModuleBase):
                                     'mpd_headers': headers,
                                     'clean': True,
                                     'folder_tmp': foler_tmp,
-                                    'folder_output': save_path,
+                                    'folder_output': vod.save_path,
                                     'proxies': proxies,
                                 }, self.wvtool_callback_function)
                             case _:
                                 downloader = SupportFfmpeg(
                                     SupportWavve.get_prefer_url(vod.playurl, headers),
                                     vod.filename,
-                                    save_path=save_path,
+                                    save_path=vod.save_path,
                                     headers=headers,
                                     callback_id=callback_id,
                                     callback_function=self.ffmpeg_listener,
@@ -476,7 +475,7 @@ class ModuleRecent(PluginModuleBase):
                     # 자막 다운로드
                     download_webvtts(
                         vod.streaming_json.get('subtitles') or [],
-                        f"{save_path}/{vod.filename}",
+                        f"{vod.save_path}/{vod.filename}",
                         P.ModelSetting.get_list(f'{self.name}_subtitle_langs', delimeter=',')
                     )
                     # 다운로드 시작
