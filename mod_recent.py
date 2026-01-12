@@ -3,6 +3,7 @@ import re
 import time
 import datetime
 from typing import Iterable
+from pathlib import Path
 
 import flask
 import sqlite3
@@ -30,7 +31,7 @@ class ModuleRecent(PluginModuleBase):
         super(ModuleRecent, self).__init__(P, 'list', scheduler_desc="웨이브 최근 방송 다운로드")
         self.name = name
         self.db_default = {
-            f"{self.name}_db_version": "1.1",
+            f"{self.name}_db_version": "1.2",
             f"{P.package_name}_{self.name}_last_list_option": "",
             f"{self.name}_interval": "30",
             f"{self.name}_auto_start": "False",
@@ -43,6 +44,8 @@ class ModuleRecent(PluginModuleBase):
             f"{self.name}_except_episode_episodetitle": "예고",
             f"{self.name}_page_count": "2",
             f"{self.name}_save_path": "{PATH_DATA}" + os.sep + "download",
+            f"{self.name}_genre_base_path": "{PATH_DATA}" + os.sep + "download",
+            f"{self.name}_genre_path_targets": "",
             f"{self.name}_download_program_in_qvod": "",
             f"{self.name}_download_mode": "blacklist",
             f"{self.name}_whitelist_program": "",
@@ -399,6 +402,14 @@ class ModuleRecent(PluginModuleBase):
                         P.logger.warning(f'The play URL may have expired, retrieve it: {vod.contentid}')
                         self.retrieve_recent_vod(vod, self.retrieve_settings)
 
+                    # 장르 별 다운로드 폴더 사용
+                    try:
+                        if vod.programgenre in P.ModelSetting.get_list(f"{self.name}_genre_path_targets", delimeter=","):
+                            download_path = Path(P.ModelSetting.get(f"{self.name}_genre_base_path")) / vod.programgenre
+                            save_path = ToolUtil.make_path(str(download_path))
+                    except Exception:
+                        P.logger.exception(f"{vod.id=} {vod.programgenre=}")
+
                     vod.pf = 0
                     vod.save_path = save_path
                     vod.start_time = datetime.datetime.now()
@@ -510,6 +521,11 @@ class ModuleRecent(PluginModuleBase):
                             cs.execute(f'ALTER TABLE "wavve_recent" ADD COLUMN "programgenre" VARCHAR')
                         cs.execute(f'DELETE FROM "wavve_setting" WHERE key = "recent_search_genre"')
                         cs.execute(f'UPDATE "wavve_setting" SET value = "1.1" WHERE key = "recent_db_version"')
+                    elif version == 1.1:
+                        save_path = P.ModelSetting.get("recent_save_path") or ''
+                        if save_path:
+                            cs.execute(f'UPDATE wavve_setting SET value = "{save_path}" WHERE key = "recent_genre_base_path"')
+                        cs.execute(f'UPDATE "wavve_setting" SET value = "1.2" WHERE key = "recent_db_version"')
             except Exception as e:
                 P.logger.exception(str(e))
             finally:
