@@ -324,7 +324,9 @@ def set_binary() -> None:
                     try:
                         if BINARIES[name][0].is_symlink() and not BINARIES[name][0].exists():
                             BINARIES[name][0].unlink()
-                        BINARIES[name][0].symlink_to(str(checked_path))
+                            BINARIES[name][0].symlink_to(str(checked_path))
+                        elif not BINARIES[name][0].lexists():
+                            BINARIES[name][0].symlink_to(str(checked_path))
                     except Exception:
                         P.logger.exception(f"링크 생성 실패: {BINARIES[name][0]} source='{str(checked_path)}'")
                         BINARIES[name][0] = None
