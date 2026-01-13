@@ -150,6 +150,10 @@ class ModuleProgram(PluginModuleBase):
         while True:
             try:
                 while True:
+                    if not getattr(SupportWavve, "api", None):
+                        P.logger.warning(f"Wavve API is not ready...")
+                        time.sleep(1)
+                        continue
                     if self.current_ffmpeg_count < P.ModelSetting.get_int(f"{self.name}_ffmpeg_max_count"):
                         break
                     time.sleep(5)
