@@ -154,6 +154,7 @@ class REDownloader(WVDownloader):
             '--concurrent-download',
             #'--no-log',
             '--no-ansi-color',
+            '--del-after-done', 'False',
         ))
         for k, v in self.mpd_headers.items():
             command.extend(('-H', f'{k}: {v}'))
