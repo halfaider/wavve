@@ -155,6 +155,11 @@ class ModuleRecent(PluginModuleBase):
 
     def save_recent_vods(self, vods: list[dict]) -> None:
         for vod in vods:
+            programid = vod.get('programid')
+            contentid = vod.get('contentid')
+            if programid in ('S27_SBSNEWS0001', 'K01_AG2025-0015', 'C2101_1', 'K01_AG2025'):
+                P.logger.debug(f"VOD 필터: {contentid=} '{vod['programtitle']}'")
+                continue
             self.save_recent_vod(vod)
 
     def pick_out_recent_vod(self, vod: 'ModelWavveRecent', settings: dict) -> None:
