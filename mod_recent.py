@@ -63,6 +63,7 @@ class ModuleRecent(PluginModuleBase):
             f"{self.name}_subtitle_langs": "all",
             f"{self.name}_hls": "WV",
             f"{self.name}_max_retry": "20",
+            f"{self.name}_exclude_by_id": "S27_SBSNEWS0001,K01_AG2025-0015,C2101_1,K01_AG2025"
         }
         self.web_list_model = ModelWavveRecent
         self.current_download_count = 0
@@ -154,13 +155,15 @@ class ModuleRecent(PluginModuleBase):
         return vod
 
     def save_recent_vods(self, vods: list[dict]) -> None:
+        excludes = {x for x in re.split(r"[,\n|]", P.ModelSetting.get(f'{self.name}_exclude_by_id')) if x.strip()}
+        excluded = set()
         for vod in vods:
-            programid = vod.get('programid')
-            contentid = vod.get('contentid')
-            if programid in ('S27_SBSNEWS0001', 'K01_AG2025-0015', 'C2101_1', 'K01_AG2025'):
-                P.logger.debug(f"VOD 필터: {contentid=} '{vod['programtitle']}'")
+            if {vod.get('programid'), vod.get('contentid')} & excludes:
+                excluded.add(vod['contentid'])
                 continue
             self.save_recent_vod(vod)
+        if excluded:
+            P.logger.debug(f"VOD 제외: {excluded}")
 
     def pick_out_recent_vod(self, vod: 'ModelWavveRecent', settings: dict) -> None:
         if vod.completed:
