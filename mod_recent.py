@@ -63,7 +63,6 @@ class ModuleRecent(PluginModuleBase):
             f"{self.name}_subtitle_langs": "all",
             f"{self.name}_hls": "WV",
             f"{self.name}_max_retry": "20",
-            f"{self.name}_exclude_by_id": "S27_SBSNEWS0001,K01_AG2025-0015,C2101_1,K01_AG2025"
         }
         self.web_list_model = ModelWavveRecent
         self.current_download_count = 0
@@ -155,15 +154,11 @@ class ModuleRecent(PluginModuleBase):
         return vod
 
     def save_recent_vods(self, vods: list[dict]) -> None:
-        excludes = {x for x in re.split(r"[,\n|]", P.ModelSetting.get(f'{self.name}_exclude_by_id')) if x.strip()}
-        excluded = set()
+        settings = self.pick_out_settings
         for vod in vods:
-            if {vod.get('programid'), vod.get('contentid')} & excludes:
-                excluded.add(vod['contentid'])
-                continue
-            self.save_recent_vod(vod)
-        if excluded:
-            P.logger.debug(f"VOD 제외: {excluded}")
+            vod_model = self.save_recent_vod(vod)
+            self.should_download(vod_model, settings)
+            vod_model.save()
 
     def pick_out_recent_vod(self, vod: 'ModelWavveRecent', settings: dict) -> None:
         if vod.completed:
@@ -236,41 +231,8 @@ class ModuleRecent(PluginModuleBase):
             P.logger.warning(f'No program genre: {vod.contentid} ')
             vod.etc_abort = 33
             return
-        match settings['download_mode']:
-            case 'blacklist':
-                for channel in settings['except_channel']:
-                    if channel in vod.channelname:
-                        vod.etc_abort = 12
-                        return
-                for genre in settings['except_program_genres']:
-                    if genre in vod.programgenre:
-                        vod.etc_abort = 17
-                        return
-                program_title = vod.programtitle.replace(' ', '')
-                for title in settings['except_program']:
-                    if title in program_title:
-                        vod.etc_abort = 13
-                        return
-            case 'whitelist':
-                try:
-                    episode_num = int(vod.episodenumber)
-                except Exception:
-                    episode_num = 0
-                if settings['whitelist_first_episode_download'] and episode_num == 1:
-                    return
-                should_download = False
-                for genre in settings['whitelist_program_genres']:
-                    if genre in vod.programgenre:
-                        should_download = True
-                        break
-                program_title = vod.programtitle.replace(' ', '')
-                for title in settings['whitelist_program']:
-                    if title in program_title:
-                        should_download = True
-                        break
-                if not should_download:
-                    vod.etc_abort = 14
-                    return
+        if not self.should_download(vod, settings):
+            return
 
         # UHD 대기 (streaming_json)
         if not vod.quality:
@@ -647,6 +609,44 @@ class ModuleRecent(PluginModuleBase):
 
         if is_last:
             self.current_download_count -= 1
+
+    def should_download(self, vod: 'ModelWavveRecent', settings: dict) -> bool:
+        match settings['download_mode']:
+            case 'blacklist':
+                for channel in settings['except_channel']:
+                    if channel in vod.channelname:
+                        vod.etc_abort = 12
+                        return False
+                for genre in settings['except_program_genres']:
+                    if genre in vod.programgenre:
+                        vod.etc_abort = 17
+                        return False
+                program_title = vod.programtitle.replace(' ', '')
+                for title in settings['except_program']:
+                    if title in program_title:
+                        vod.etc_abort = 13
+                        return False
+            case 'whitelist':
+                try:
+                    episode_num = int(vod.episodenumber)
+                except Exception:
+                    episode_num = 0
+                if settings['whitelist_first_episode_download'] and episode_num == 1:
+                    return True
+                should_download = False
+                for genre in settings['whitelist_program_genres']:
+                    if genre in vod.programgenre:
+                        should_download = True
+                        break
+                program_title = vod.programtitle.replace(' ', '')
+                for title in settings['whitelist_program']:
+                    if title in program_title:
+                        should_download = True
+                        break
+                if not should_download:
+                    vod.etc_abort = 14
+                    return False
+        return True
 
 
 class ModelWavveRecent(ModelBase):

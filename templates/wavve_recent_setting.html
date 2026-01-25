@@ -36,7 +36,6 @@
   {{ macros.setting_select('recent_drm', 'DRM 다운로더', [['WV', 'aria2c'], ['RE', 'N_m3u8dl_RE']], col='3', value=arg['recent_drm']) }}
   {{ macros.setting_select('recent_hls', 'HLS 다운로더', [['WV', 'FFMPEG'], ['RE', 'N_m3u8dl_RE']], col='3', value=arg['recent_hls']) }}
   {{ macros.setting_input_text('recent_subtitle_langs', '자막 언어', value=arg['recent_subtitle_langs'], col='9', desc=['all: 모든 언어', 'ko: 한국어 자막만 다운', 'ko,en: 한국어, 영어 다운로드 (구분: 쉼표)', '공백: 다운로드 하지 않음', '기본 모듈에서 조회 후 제공되는 언어 코드 확인']) }}
-  {{ macros.setting_input_textarea('recent_exclude_by_id', '제외 콘텐츠 ID', value=arg['recent_exclude_by_id'], desc=['제외하고 싶은 프로그램 혹은 VOD의 ID', 'API 호출 최소화를 위해 목록에서 아예 제외할 콘텐츠', ',로 구분']) }}
 {{ macros.m_tab_content_end() }}
 
 {{ macros.m_tab_content_start('scheduler', false) }}
