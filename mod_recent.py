@@ -617,10 +617,11 @@ class ModuleRecent(PluginModuleBase):
                     if channel in vod.channelname:
                         vod.etc_abort = 12
                         return False
-                for genre in settings['except_program_genres']:
-                    if genre in vod.programgenre:
-                        vod.etc_abort = 17
-                        return False
+                if vod.programgenre:
+                    for genre in settings['except_program_genres']:
+                        if genre in vod.programgenre:
+                            vod.etc_abort = 17
+                            return False
                 program_title = vod.programtitle.replace(' ', '')
                 for title in settings['except_program']:
                     if title in program_title:
@@ -634,10 +635,11 @@ class ModuleRecent(PluginModuleBase):
                 if settings['whitelist_first_episode_download'] and episode_num == 1:
                     return True
                 should_download = False
-                for genre in settings['whitelist_program_genres']:
-                    if genre in vod.programgenre:
-                        should_download = True
-                        break
+                if vod.programgenre:
+                    for genre in settings['whitelist_program_genres']:
+                        if genre in vod.programgenre:
+                            should_download = True
+                            break
                 program_title = vod.programtitle.replace(' ', '')
                 for title in settings['whitelist_program']:
                     if title in program_title:
