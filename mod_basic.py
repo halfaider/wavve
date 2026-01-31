@@ -49,7 +49,7 @@ class ModuleBasic(PluginModuleBase):
             case 'download_start':
                 save_path = ToolUtil.make_path(P.ModelSetting.get(f"{self.name}_save_path"))
                 with SupportWavve.api.get_account() as account:
-                    proxies = {"http": account.proxy, "https": account.proxy} if account.proxy else None
+                    proxies = {"http": account.download_proxy, "https": account.download_proxy} if account.download_proxy else None
                 if self.last_data['streaming'].get('drm'):
                     # dash
                     drm_key_request_properties = self.last_data['streaming']['play_info'].get('drm_key_request_properties') or ''
