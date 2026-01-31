@@ -405,6 +405,7 @@ class ModuleRecent(PluginModuleBase):
                     # 장르 별 다운로드 폴더 사용
                     if vod.programgenre in P.ModelSetting.get_list(f"{self.name}_genre_path_targets", delimeter=","):
                         download_path = Path(P.ModelSetting.get(f"{self.name}_genre_base_path")) / vod.programgenre
+                        download_path.mkdir(parents=True, exist_ok=True)
                         download_path = ToolUtil.make_path(str(download_path))
                     else:
                         download_path = save_path
@@ -416,7 +417,8 @@ class ModuleRecent(PluginModuleBase):
                     # start_time 저장
                     vod.save()
                     callback_id = f'{P.package_name}_{self.name}_{vod.id}'
-                    proxies = SupportWavve.api.get_session().proxies
+                    with SupportWavve.api.get_account() as account:
+                        proxies = {"http": account.proxy, "https": account.proxy} if account.proxy else None
                     if vod.streaming_json.get('drm'):
                         # dash
                         drm_key_request_properties = vod.streaming_json['play_info'].get('drm_key_request_properties')
