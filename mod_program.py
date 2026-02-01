@@ -201,8 +201,14 @@ class ModuleProgram(PluginModuleBase):
                 save_path = ToolUtil.make_path(P.ModelSetting.get(f"{self.name}_save_path"))
                 folder_tmp = os.path.join(F.config['path_data'], 'tmp')
                 callback_id = f"{P.package_name}_{self.name}_{db_item.id}"
-                with SupportWavve.api.get_account() as account:
-                    proxies = {"http": account.download_proxy, "https": account.download_proxy} if account.download_proxy else None
+                try:
+                    account = SupportWavve.api.get_account()
+                except Exception:
+                    account = None
+                if account and account.download_proxy:
+                    proxies = {"http": account.download_proxy, "https": account.download_proxy}
+                else:
+                    proxies = None
                 if streaming_data.get('drm'):
                      # dash
                     drm_key_request_properties = streaming_data['play_info'].get('drm_key_request_properties')

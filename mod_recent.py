@@ -417,8 +417,14 @@ class ModuleRecent(PluginModuleBase):
                     # start_time 저장
                     vod.save()
                     callback_id = f'{P.package_name}_{self.name}_{vod.id}'
-                    with SupportWavve.api.get_account() as account:
-                        proxies = {"http": account.download_proxy, "https": account.download_proxy} if account.download_proxy else None
+                    try:
+                        account = SupportWavve.api.get_account()
+                    except Exception:
+                        account = None
+                    if account and account.download_proxy:
+                        proxies = {"http": account.download_proxy, "https": account.download_proxy}
+                    else:
+                        proxies = None
                     if vod.streaming_json.get('drm'):
                         # dash
                         drm_key_request_properties = vod.streaming_json['play_info'].get('drm_key_request_properties')
