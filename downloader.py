@@ -9,6 +9,7 @@ import platform
 import functools
 import subprocess
 import urllib.parse
+from typing import Callable
 
 from io import BytesIO
 
@@ -29,6 +30,24 @@ BINARIES = {
     'mkvmerge': [None, 'mkvmerge.exe' if SYSTEM == 'windows' else 'mkvmerge', WVTOOL_MKVMERGE],
 }
 
+logger = P.logger or logging.getLogger(__name__)
+settings = P.ModelSetting or {}
+
+def downloadable(func: Callable) -> Callable:
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwds) -> bool:
+        try:
+            if not self.check_file_path():
+                return False
+            command = self.get_command(func.__name__)
+            return self.execute_command(command)
+        except Exception as e:
+            self.logger.exception(str(e))
+        finally:
+            func(self, *args, **kwds)
+        return False
+    return wrapper
+
 
 class REDownloader(WVDownloader):
 
@@ -45,21 +64,6 @@ class REDownloader(WVDownloader):
         'ja': 'Japanese', 'jpn': 'Japanese',
     }
 
-    def downloadable(func: callable) -> callable:
-        @functools.wraps(func)
-        def wrapper(self, *args, **kwds) -> bool:
-            try:
-                if not self.check_file_path():
-                    return False
-                command = self.get_command(func.__name__)
-                return self.execute_command(command)
-            except Exception as e:
-                self.logger.exception(str(e))
-            finally:
-                func(self, *args, **kwds)
-            return False
-        return wrapper
-
     @downloadable
     def download_mpd(self) -> bool:
         '''override'''
@@ -69,6 +73,7 @@ class REDownloader(WVDownloader):
     @downloadable
     def download_m3u8(self) -> bool:
         '''override'''
+        self.download_mpd()
         return False
 
     def download(self) -> bool:
@@ -87,6 +92,7 @@ class REDownloader(WVDownloader):
             output.parent.mkdir(parents=True, exist_ok=True)
             self.prepare()
             self.set_status("DOWNLOADING")
+            result = False
             if self.streaming_protocol == 'hls':
                 result = self.download_m3u8()
             elif self.streaming_protocol == 'dash':
@@ -111,10 +117,10 @@ class REDownloader(WVDownloader):
 
     def get_command(self, what_for: str = 'download_m3u8') -> list:
         output_filepath = pathlib.Path(self.output_filepath)
-        n_m3u8dl_re = BINARIES.get('N_m3u8DL-RE')[0]
-        ffmpeg = BINARIES.get('ffmpeg')[0]
-        mp4decrypt = BINARIES.get('mp4decrypt')[0]
-        mkvmerge = BINARIES.get('mkvmerge')[0]
+        n_m3u8dl_re = BINARIES['N_m3u8DL-RE'][0]
+        ffmpeg = BINARIES['ffmpeg'][0]
+        mp4decrypt = BINARIES['mp4decrypt'][0]
+        mkvmerge = BINARIES['mkvmerge'][0]
         for binary, name in ((n_m3u8dl_re, 'N_m3u8DL-RE'), (ffmpeg, 'ffmpeg'), (mp4decrypt, 'mp4decrypt'), (mkvmerge, 'mkvmerge')):
             if binary is None:
                 raise Exception(f"{name} 실행 파일이 없습니다.")
@@ -228,7 +234,7 @@ class REDownloader(WVDownloader):
                 if getattr(self, '_stop_flag', False):
                     self.logger.debug(f'Stop downloading...')
                     process.terminate()
-                    return False
+                    return
                 if not (msg := line.strip()):
                     continue
                 if match := self.RE_LOGGING_REGEX.search(msg):
@@ -260,9 +266,9 @@ def download_webvtt(url: str, lang: str, video_file_path: str) -> None:
             with open(srt_file, 'w') as f:
                 vtt.write(f, format='srt')
         else:
-            P.logger.error(f'Downloading subtitle failed: {str(srt_file)}')
+            logger.error(f'Downloading subtitle failed: {str(srt_file)}')
     except Exception:
-        P.logger.exception(url)
+        logger.exception(url)
 
 
 def check_executable(path: pathlib.Path) -> tuple[bool, pathlib.Path | None]:
@@ -277,13 +283,13 @@ def check_executable(path: pathlib.Path) -> tuple[bool, pathlib.Path | None]:
             if os.access(path, os.X_OK):
                 return True, path
         except Exception:
-            P.logger.exception(f'실행 권한 부여 실패: {path}')
+            logger.exception(f'실행 권한 부여 실패: {path}')
     return False, None
 
 
 def set_binary() -> None:
     machine = platform.machine().lower()
-    path_bin = pathlib.Path(P.ModelSetting.get('basic_bin_path')).absolute()
+    path_bin = pathlib.Path(settings.get('basic_bin_path') or '/data/bin').absolute()
     path_bin.mkdir(parents=True, exist_ok=True)
     for name in BINARIES:
         binary, filename, alternative = BINARIES[name]
@@ -305,7 +311,7 @@ def set_binary() -> None:
                     case 'windows', _:
                         old_sub = "Windows"
                     case _:
-                        P.logger.warning(f"Unsupported device: {SYSTEM} {machine}")
+                        logger.warning(f"Unsupported device: {SYSTEM} {machine}")
                         continue
                 path_bin_old = pathlib.Path(__file__).parent / 'bin' / old_sub / filename
                 if path_bin_old.exists():
@@ -328,10 +334,10 @@ def set_binary() -> None:
                         if not (BINARIES[name][0].exists() or BINARIES[name][0].is_symlink()):
                             BINARIES[name][0].symlink_to(str(checked_path))
                     except Exception:
-                        P.logger.exception(f"링크 생성 실패: {BINARIES[name][0]} source='{str(checked_path)}'")
+                        logger.exception(f"링크 생성 실패: {BINARIES[name][0]} source='{str(checked_path)}'")
                         BINARIES[name][0] = None
                 else:
                     BINARIES[name][0] = None
 
         if BINARIES[name][0] is None:
-            P.logger.warning(f'Not found: {filename}')
+            logger.warning(f'Not found: {filename}')
