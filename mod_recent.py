@@ -57,6 +57,7 @@ class ModuleRecent(PluginModuleBase):
             f"{self.name}_auto_db_days": "7",
             f"{self.name}_search_genres": "드라마,예능,시사,교양,해외시리즈,애니메이션,스포츠,키즈,시사교양",
             f"{self.name}_search_days": "2",
+            f"{self.name}_search_all": "true",
             f"{self.name}_except_genres": "",
             f"{self.name}_whitelist_genres": "",
             f"{self.name}_drm": "WV",
@@ -139,7 +140,8 @@ class ModuleRecent(PluginModuleBase):
     def get_recent_vods(self) -> list[dict]:
         search_genres = P.ModelSetting.get_list(f'{self.name}_search_genres', delimeter=',')
         search_days = P.ModelSetting.get_int(f'{self.name}_search_days')
-        recents, additional_ids = SupportWavve.get_new_vods(days=search_days, genres=search_genres)
+        search_all = P.ModelSetting.get_bool(f'{self.name}_search_all')
+        recents, additional_ids = SupportWavve.get_new_vods(days=search_days, genres=search_genres, search_all=search_all)
         recents = SupportWavve.get_more_new_vods(recents, additional_ids, self.web_list_model, search_days)
         return recents
 
