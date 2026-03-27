@@ -1,11 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
 
-{{ macros.m_button_group([['globalSettingSaveBtn', '설정 저장'], ['globalOneExecuteBtn', '1회 실행'], ['globalImmediatelyExecuteBtn', '즉시 실행'], ['globalDbDeleteBtn', '에피소드 목록 DB 초기화'], ['reset_status_of_all_btn', '에피소드 상태 초기화']])}}
+<style>
+  .quick .toggle-group { transition: none; -webkit-transition: none; }
+
+  #recent_search_tags .btn.active {
+      background-color: #009200 !important;
+      color: white !important;
+      border-color: #003b00 !important;
+      box-shadow: inset 0 3px 5px rgba(0,0,0,.125);
+  }
+
+  #recent_search_tags .btn:hover {
+      background-color: #e6e6e6;
+  }
+
+  #recent_search_tags .btn {
+      margin-bottom: 1px !important;
+      margin-right: 1px !important;
+      border-color: #e6e6e6 !important;
+  }
+</style>
+
+{{ macros.m_button_group([['settingSaveBtn', '설정 저장'], ['globalOneExecuteBtn', '1회 실행'], ['globalImmediatelyExecuteBtn', '즉시 실행'], ['globalDbDeleteBtn', '에피소드 목록 DB 초기화'], ['reset_status_of_all_btn', '에피소드 상태 초기화']])}}
 {{ macros.m_row_start('5') }}
 {{ macros.m_row_end() }}
-
-
 
 <nav>
   {{ macros.m_tab_head_start() }}
@@ -22,21 +41,57 @@
 <form id='setting' name='setting'>
 <div class="tab-content" id="nav-tabContent">
 {{ macros.m_tab_content_start('normal', true) }}
+  {{ macros.setting_input_int('recent_search_days', '검색 일 수', value=arg['recent_search_days'], min='1', placeholder='1', desc=['VOD 방송일 제한 기준', '3: 오늘 포함 사흘간 릴리즈 된 VOD']) }}
+  {{ macros.setting_input_text('recent_search_keywords', '키워드 검색', value=arg['recent_search_keywords'], col='9', desc=['검색할 키워드', '쉼표(,) 혹은 공백으로 구분']) }}
+  {{ macros.setting_input_text('recent_search_exclude_keywords', '검색 제외 키워드', value=arg['recent_search_exclude_keywords'], col='9', desc=['키워드 및 태그 검색에서 제외할 키워드', '쉼표(,) 혹은 공백으로 구분']) }}
+  <div class="row" id="recent_search_tags" style="padding-top: 10px; padding-bottom:10px; align-items: center;">
+    <div class="col-sm-3 set-left">
+      <strong>태그 검색</strong>
+    </div>
+    <div class="col-sm-9">
+      {% for group_title, sub_groups in arg.vod_tag_groups.items() %}
+      <strong class="px-3 m-0 pt-1">{{ group_title }}</strong>
+      {% for sub_title, items in sub_groups.items() %}
+      {% if sub_title %}
+      <p class="text-muted small pl-3 m-0">{{ sub_title }}</p>
+      {% endif %}
+      <div class="input-group d-flex flex-wrap gap-1 pl-4" data-toggle="buttons">
+        {% for item in items %}
+        {% set item_id = "tag_" ~ group_title ~ "_" ~ loop.index0 ~ "_" ~ loop.index %}
+        {% set is_checked = item.value in arg.recent_search_tags if arg.recent_search_tags else false %}
+        <label class="btn btn-tag-custom btn-xs px-1{{ ' active' if is_checked }}" for="{{ item_id }}">
+          <input type="checkbox"
+              id="{{ item_id }}"
+              name="recent_search_tags"
+              value="{{ item.value }}"
+              {% if is_checked %}checked{% endif %}
+              class=""
+              data-taggroup="{{ item.taggroup }}"
+              hidden>
+          {{ item.text }}
+        </label>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+  {{ macros.m_hr() }}
+  {{ macros.setting_radio_with_value('recent_download_mode', '다운로드 모드', [['blacklist', '블랙리스트'], ['whitelist', '화이트리스트']], value=arg['recent_download_mode']) }}
+  {{ macros.setting_select('recent_drm', 'DRM 다운로더', [['WV', 'aria2c'], ['RE', 'N_m3u8dl_RE']], col='3', value=arg['recent_drm']) }}
+  {{ macros.setting_select('recent_hls', 'HLS 다운로더', [['WV', 'FFMPEG'], ['RE', 'N_m3u8dl_RE']], col='3', value=arg['recent_hls']) }}
+  {{ macros.m_hr() }}
   {{ macros.setting_input_text('recent_save_path', '저장 폴더', value=arg['recent_save_path'], col='9', desc=['절대경로 혹은 {PATH_DATA}/download 와 같은 데이터 폴더 기준 상대 경로']) }}
   {{ macros.setting_input_text('recent_genre_base_path', '장르 분류 폴더', value=arg['recent_genre_base_path'], col='9', desc=['"분류할 장르"에 해당하면 이 폴더의 하위에 장르 폴더를 생성하여 저장']) }}
   {{ macros.setting_input_text('recent_genre_path_targets', '분류할 장르', value=arg['recent_genre_path_targets'], col='9', desc=['"장르 분류 폴더"에 저장할 장르 목록', ', 로 구분', '드라마,예능,해외시리즈,애니메이션,스포츠,키즈,시사교양']) }}
+  {{ macros.setting_input_text('recent_subtitle_langs', '자막 언어', value=arg['recent_subtitle_langs'], col='9', desc=['all: 모든 언어', 'ko: 한국어 자막만 다운', 'ko,en: 한국어, 영어 다운로드 (구분: 쉼표)', '공백: 다운로드 하지 않음', '기본 모듈에서 조회 후 제공되는 언어 코드 확인']) }}
+  {{ macros.m_hr() }}
   {{ macros.setting_select('recent_quality', '기본 화질', [['2160p', '2160p'], ['1080p', '1080p'], ['720p', '720p'], ['480p', '480p'], ['360p', '360p']], col='3', value=arg['recent_quality']) }}
-  <!-- {{ macros.setting_input_int('recent_page_count', '탐색 페이지수', value=arg['recent_page_count'], min='1', placeholder='2') }} -->
-  {{ macros.setting_input_int('recent_search_days', '탐색 일 수', value=arg['recent_search_days'], min='1', placeholder='1', desc=['VOD 방송일 제한 기준', '3: 오늘 포함 사흘간 릴리즈 된 VOD']) }}
   {{ macros.setting_input_int('recent_ffmpeg_max_count', '동시 다운로드 수', value=arg['recent_ffmpeg_max_count'], desc='동시에 다운로드 할 에피소드 갯수입니다.') }}
   {{ macros.setting_input_int('recent_max_retry', '재시도 횟수', value=arg['recent_max_retry'], desc=['데이터 갱신 및 다운로드에 실패한 경우 재시도할 횟수를 정합니다.']) }}
   {{ macros.setting_checkbox('recent_retry_user_abort', '사용자 중지 항목 다시 받기', value=arg['recent_retry_user_abort'], desc='On : 다음 스케쥴링 때 다시 받습니다.') }}
-  {{ macros.setting_radio_with_value('recent_download_mode', '다운로드 모드', [['blacklist', '블랙리스트'], ['whitelist', '화이트리스트']], value=arg['recent_download_mode']) }}
-  {{ macros.setting_checkbox('recent_search_all', '전체 검색 사용', value=arg['recent_search_all'], desc='Off: VOD 탐색시 전체 검색을 생략합니다.') }}
-  {{ macros.setting_input_text('recent_search_genres', '추가 검색 키워드', value=arg['recent_search_genres'], col='9', desc=['추가로 검색할 키워드', ', 로 구분', '드라마,예능,해외시리즈,애니메이션,스포츠,키즈,시사교양']) }}
-  {{ macros.setting_select('recent_drm', 'DRM 다운로더', [['WV', 'aria2c'], ['RE', 'N_m3u8dl_RE']], col='3', value=arg['recent_drm']) }}
-  {{ macros.setting_select('recent_hls', 'HLS 다운로더', [['WV', 'FFMPEG'], ['RE', 'N_m3u8dl_RE']], col='3', value=arg['recent_hls']) }}
-  {{ macros.setting_input_text('recent_subtitle_langs', '자막 언어', value=arg['recent_subtitle_langs'], col='9', desc=['all: 모든 언어', 'ko: 한국어 자막만 다운', 'ko,en: 한국어, 영어 다운로드 (구분: 쉼표)', '공백: 다운로드 하지 않음', '기본 모듈에서 조회 후 제공되는 언어 코드 확인']) }}
+  <br><br>
+
 {{ macros.m_tab_content_end() }}
 
 {{ macros.m_tab_content_start('scheduler', false) }}
@@ -80,7 +135,13 @@
 
 <script type="text/javascript">
 
-
+// 저장 버튼
+$('#settingSaveBtn').on('click', function() {
+    let formdata = new FormData(document.getElementById('setting'));
+    let query = new URLSearchParams(formdata).toString();
+    console.info(query);
+    globalSendCommand('save', query, null, null, null);
+});
 
 
 $(document).ready(function(){

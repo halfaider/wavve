@@ -73,7 +73,7 @@ class REDownloader(WVDownloader):
     @downloadable
     def download_m3u8(self) -> bool:
         '''override'''
-        self.download_mpd()
+        pathlib.Path(self.output_filepath).with_suffix('.mpd').unlink(missing_ok=True)
         return False
 
     def download(self) -> bool:

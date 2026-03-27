@@ -1,14 +1,17 @@
 import os
 import re
 import time
+import json
 import datetime
 from typing import Iterable
 from pathlib import Path
+from urllib.parse import parse_qsl
 
 import flask
 import sqlite3
 from flask_sqlalchemy.query import Query
 from sqlalchemy import desc, or_
+from werkzeug.datastructures import MultiDict
 
 from tool import ToolUtil
 from plugin.create_plugin import PluginBase
@@ -23,6 +26,27 @@ from .downloader import REDownloader, download_webvtts
 
 
 name = 'recent'
+CONFIG = P.ModelSetting
+
+
+def setting_get_json(key: str) -> dict | list:
+    try:
+        return json.loads(CONFIG.get(key))
+    except Exception:
+        P.logger.exception(f'Invalid JSON: {CONFIG.get(key)}')
+        if type(CONFIG.get(key)) is str:
+            return [CONFIG.get(key)]
+        else:
+            return {}
+
+
+def setting_set_json(key: str, value: dict | list) -> bool:
+    try:
+        CONFIG.set(key, json.dumps(value))
+        return True
+    except Exception as e:
+        P.logger.exception(f'Invalid JSON: {value}')
+        return False
 
 
 class ModuleRecent(PluginModuleBase):
@@ -42,7 +66,6 @@ class ModuleRecent(PluginModuleBase):
             f"{self.name}_except_program": "",
             f"{self.name}_except_episode_keyword": "특집,비하인드,스페셜,선공개,티저,메이킹,예고",
             f"{self.name}_except_episode_episodetitle": "예고",
-            f"{self.name}_page_count": "2",
             f"{self.name}_save_path": "{PATH_DATA}" + os.sep + "download",
             f"{self.name}_genre_base_path": "{PATH_DATA}" + os.sep + "download",
             f"{self.name}_genre_path_targets": "",
@@ -55,9 +78,10 @@ class ModuleRecent(PluginModuleBase):
             f"{self.name}_2160_wait_minute": "100",
             f"{self.name}_auto_db_clear": "False",
             f"{self.name}_auto_db_days": "7",
-            f"{self.name}_search_genres": "드라마,예능,시사,교양,해외시리즈,애니메이션,스포츠,키즈,시사교양",
+            f"{self.name}_search_tags": "[]",
+            f"{self.name}_search_keywords": "",
+            f"{self.name}_search_exclude_keywords": "",
             f"{self.name}_search_days": "2",
-            f"{self.name}_search_all": "true",
             f"{self.name}_except_genres": "",
             f"{self.name}_whitelist_genres": "",
             f"{self.name}_drm": "WV",
@@ -71,10 +95,16 @@ class ModuleRecent(PluginModuleBase):
         self.schedule_started_at = datetime.datetime(1900, 1, 1, 0, 0, 0, 0)
 
     def process_menu(self, page_name: str, req: flask.Request) -> flask.Response:
-        arg = P.ModelSetting.to_dict()
+        arg = {}
+        for key in self.db_default.keys():
+            if key in ('recent_search_tags',):
+                arg[key] = setting_get_json(key)
+            else:
+                arg[key] = CONFIG.get(key)
         if page_name == 'setting':
             arg['is_include'] = F.scheduler.is_include(self.get_scheduler_id())
             arg['is_running'] = F.scheduler.is_running(self.get_scheduler_id())
+            arg['vod_tag_groups'] = SupportWavve.vod_tag_groups.get('tree')
         return flask.render_template(f'{P.package_name}_{name}_{page_name}.html', arg=arg)
 
     def process_command(self, command: str, arg1: str, arg2: str, arg3: str, req: flask.Request) -> flask.Response:
@@ -135,13 +165,59 @@ class ModuleRecent(PluginModuleBase):
                 vod.retry = 0
                 vod.save()
                 ret['msg'] = "초기화 했습니다."
+            case 'save':
+                form_data = MultiDict(parse_qsl(arg1))
+                changes = []
+                ret = {'ret':'success', 'msg': '설정을 저장했습니다.'}
+
+                for key in self.db_default:
+                    try:
+                        if key in (
+                            'recent_retry_user_abort',
+                            'recent_qvod_download',
+                            'recent_whitelist_first_episode_download',
+                            'recent_2160_receive_1080',
+                            'recent_auto_start',
+                            'recent_auto_db_clear'
+                        ):
+                            value = (form_data.get(key) or '').lower() in ('on', 'true', 'yes')
+                            CONFIG.set(key, 'True' if value else 'False')
+                        elif key in ('recent_search_tags',):
+                            setting_set_json(key, form_data.getlist(key))
+                        elif key in (
+                            'recent_max_retry',
+                            'recent_search_days',
+                            'recent_ffmpeg_max_count',
+                            'recent_2160_wait_minute',
+                            'recent_interval',
+                            'recent_auto_db_days'
+                        ):
+                            try:
+                                value = max(int(form_data.get(key) or 0), 0)
+                            except Exception as e:
+                                P.logger.warning(f"{key}: {str(e)}")
+                                value = 0
+                            CONFIG.set(key, str(value))
+                        else:
+                            CONFIG.set(key, form_data.get(key) or '')
+                    except Exception:
+                        P.logger.exception(f"설정 저장 오류: {key}")
+                        continue
+                    changes.append(key)
+                if changes:
+                    self.setting_save_after(changes)
         return flask.jsonify(ret)
 
+    def setting_save_after(self, change_list: list) -> None:
+        '''override'''
+        super().setting_save_after(change_list)
+
     def get_recent_vods(self) -> list[dict]:
-        search_genres = P.ModelSetting.get_list(f'{self.name}_search_genres', delimeter=',')
-        search_days = P.ModelSetting.get_int(f'{self.name}_search_days')
-        search_all = P.ModelSetting.get_bool(f'{self.name}_search_all')
-        recents, additional_ids = SupportWavve.get_new_vods(days=search_days, genres=search_genres, search_all=search_all)
+        search_keywords = tuple(kw for kw in re.split(r'\W+', CONFIG.get(f'{self.name}_search_keywords') or '') if kw)
+        search_days = CONFIG.get_int(f'{self.name}_search_days')
+        search_tags = tuple(setting_get_json('recent_search_tags'))
+        search_exclude_keywords = tuple(kw for kw in re.split(r'\W+', CONFIG.get(f'{self.name}_search_exclude_keywords') or '') if kw)
+        recents, additional_ids = SupportWavve.get_new_vods(days=search_days, keywords=search_keywords, exclude_keywords=search_exclude_keywords, tags=search_tags)
         recents = SupportWavve.get_more_new_vods(recents, additional_ids, self.web_list_model, search_days)
         return recents
 
@@ -511,7 +587,11 @@ class ModuleRecent(PluginModuleBase):
             P.logger.debug(f'Schedule ends.')
 
     def migration(self) -> None:
-        version = float(P.ModelSetting.get(f'{self.name}_db_version'))
+        version = P.ModelSetting.get(f'{self.name}_db_version')
+        try:
+            version = float(version)
+        except Exception:
+            version = 1
         with F.app.app_context():
             try:
                 db_file = F.app.config['SQLALCHEMY_BINDS'][P.package_name].replace('sqlite:///', '').split('?')[0]
