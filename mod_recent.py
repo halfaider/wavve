@@ -213,10 +213,10 @@ class ModuleRecent(PluginModuleBase):
         super().setting_save_after(change_list)
 
     def get_recent_vods(self) -> list[dict]:
-        search_keywords = tuple(kw for kw in re.split(r'\W+', CONFIG.get(f'{self.name}_search_keywords') or '') if kw)
+        search_keywords = tuple(kw for kw in re.split(r',+', CONFIG.get(f'{self.name}_search_keywords') or '') if kw)
         search_days = CONFIG.get_int(f'{self.name}_search_days')
         search_tags = tuple(setting_get_json('recent_search_tags'))
-        search_exclude_keywords = tuple(kw for kw in re.split(r'\W+', CONFIG.get(f'{self.name}_search_exclude_keywords') or '') if kw)
+        search_exclude_keywords = tuple(kw for kw in re.split(r',+', CONFIG.get(f'{self.name}_search_exclude_keywords') or '') if kw)
         recents, additional_ids = SupportWavve.get_new_vods(days=search_days, keywords=search_keywords, exclude_keywords=search_exclude_keywords, tags=search_tags)
         recents = SupportWavve.get_more_new_vods(recents, additional_ids, self.web_list_model, search_days)
         return recents
