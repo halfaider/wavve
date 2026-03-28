@@ -27,6 +27,7 @@ from .downloader import REDownloader, download_webvtts
 
 name = 'recent'
 CONFIG = P.ModelSetting
+SPLITTER = re.compile(r'[|`\^]+')
 
 
 def setting_get_json(key: str) -> dict | list:
@@ -47,6 +48,15 @@ def setting_set_json(key: str, value: dict | list) -> bool:
     except Exception as e:
         P.logger.exception(f'Invalid JSON: {value}')
         return False
+    
+
+def setting_get_list(key: str) -> list:
+    container = []
+    for kw in SPLITTER.split(CONFIG.get(key) or ''):
+        kw = kw.strip()
+        if kw:
+            container.append(kw)
+    return container
 
 
 class ModuleRecent(PluginModuleBase):
@@ -189,7 +199,6 @@ class ModuleRecent(PluginModuleBase):
                             'recent_search_days',
                             'recent_ffmpeg_max_count',
                             'recent_2160_wait_minute',
-                            'recent_interval',
                             'recent_auto_db_days'
                         ):
                             try:
@@ -213,10 +222,10 @@ class ModuleRecent(PluginModuleBase):
         super().setting_save_after(change_list)
 
     def get_recent_vods(self) -> list[dict]:
-        search_keywords = tuple(kw for kw in re.split(r',+', CONFIG.get(f'{self.name}_search_keywords') or '') if kw)
+        search_keywords = setting_get_list(f'{self.name}_search_keywords')
+        search_exclude_keywords = setting_get_list(f'{self.name}_search_exclude_keywords')
         search_days = CONFIG.get_int(f'{self.name}_search_days')
         search_tags = tuple(setting_get_json('recent_search_tags'))
-        search_exclude_keywords = tuple(kw for kw in re.split(r',+', CONFIG.get(f'{self.name}_search_exclude_keywords') or '') if kw)
         recents, additional_ids = SupportWavve.get_new_vods(days=search_days, keywords=search_keywords, exclude_keywords=search_exclude_keywords, tags=search_tags)
         recents = SupportWavve.get_more_new_vods(recents, additional_ids, self.web_list_model, search_days)
         return recents

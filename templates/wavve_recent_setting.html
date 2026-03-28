@@ -42,8 +42,8 @@
 <div class="tab-content" id="nav-tabContent">
 {{ macros.m_tab_content_start('normal', true) }}
   {{ macros.setting_input_int('recent_search_days', '검색 일 수', value=arg['recent_search_days'], min='1', placeholder='1', desc=['VOD 방송일 제한 기준', '3: 오늘 포함 사흘간 릴리즈 된 VOD']) }}
-  {{ macros.setting_input_text('recent_search_keywords', '키워드 검색', value=arg['recent_search_keywords'], col='9', desc=['검색할 키워드', '쉼표(,)로 구분']) }}
-  {{ macros.setting_input_text('recent_search_exclude_keywords', '검색 제외 키워드', value=arg['recent_search_exclude_keywords'], col='9', desc=['키워드 및 태그 검색에서 제외할 키워드', '쉼표(,)로 구분']) }}
+  {{ macros.setting_input_text('recent_search_keywords', '키워드 검색', value=arg['recent_search_keywords'], col='9', desc=['검색할 키워드', '구분자: |, `, ^ (파이프, 백틱, 캐럿)']) }}
+  {{ macros.setting_input_text('recent_search_exclude_keywords', '검색 제외 키워드', value=arg['recent_search_exclude_keywords'], col='9', desc=['키워드 및 태그 검색에서 제외할 키워드', '구분자: |, `, ^ (파이프, 백틱, 캐럿)']) }}
   <div class="row" id="recent_search_tags" style="padding-top: 10px; padding-bottom:10px; align-items: center;">
     <div class="col-sm-3 set-left">
       <strong>태그 검색</strong>
