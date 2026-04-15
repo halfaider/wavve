@@ -45,6 +45,7 @@ def downloadable(func: Callable) -> Callable:
             self.logger.exception(str(e))
         finally:
             func(self, *args, **kwds)
+            pathlib.Path(self.output_filepath).with_suffix('.mpd').unlink(missing_ok=True)
         return False
     return wrapper
 
@@ -67,13 +68,11 @@ class REDownloader(WVDownloader):
     @downloadable
     def download_mpd(self) -> bool:
         '''override'''
-        pathlib.Path(self.output_filepath).with_suffix('.mpd').unlink(missing_ok=True)
         return False
 
     @downloadable
     def download_m3u8(self) -> bool:
         '''override'''
-        pathlib.Path(self.output_filepath).with_suffix('.mpd').unlink(missing_ok=True)
         return False
 
     def download(self) -> bool:
@@ -158,9 +157,9 @@ class REDownloader(WVDownloader):
             '--mp4-real-time-decryption',
             '--auto-select',
             '--concurrent-download',
-            #'--no-log',
+            '--no-log',
             '--no-ansi-color',
-            '--del-after-done', 'False',
+            #'--del-after-done', 'False',
         ))
         for k, v in self.mpd_headers.items():
             command.extend(('-H', f'{k}: {v}'))
