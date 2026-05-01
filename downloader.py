@@ -187,7 +187,8 @@ class REDownloader(WVDownloader):
                 else:
                     lang_code = 'und'
                     lang_name = 'Undefined'
-            parameters.extend(('--mux-import', f'path="{str(subtitle)}":lang={lang_code}:name="{lang_name}"'))
+            subtitle_path = str(subtitle).replace(':', r'\:')
+            parameters.extend(('--mux-import', f'path="{subtitle_path}":lang={lang_code}:name="{lang_name}"'))
         return parameters
 
     def check_file_path(self) -> bool:
